@@ -1455,12 +1455,62 @@ fn upsert_resource_permissions(lib_path: &Path, context: &ResourceContext) -> an
     let fn_index = content
         .find("fn permissions(&self)")
         .with_context(|| format!("permissions function not found in {}", lib_path.display()))?;
-    let relative_index = content[fn_index..]
-        .find("        ]")
-        .with_context(|| format!("permissions vec marker not found in {}", lib_path.display()))?;
-    content.insert_str(fn_index + relative_index, &entries);
+    upsert_entries_into_permissions_vec(&mut content, fn_index, &entries)
+        .with_context(|| format!("updating permissions vec in {}", lib_path.display()))?;
     fs::write(lib_path, content)?;
     Ok(())
+}
+
+fn upsert_entries_into_permissions_vec(
+    content: &mut String,
+    fn_index: usize,
+    entries: &str,
+) -> anyhow::Result<()> {
+    let vec_relative_index = content[fn_index..]
+        .find("vec![")
+        .ok_or_else(|| anyhow::anyhow!("permissions vec![] not found"))?;
+    let vec_start = fn_index + vec_relative_index;
+    let inner_start = vec_start + "vec![".len();
+    let vec_end = find_matching_bracket(content, inner_start - 1)
+        .ok_or_else(|| anyhow::anyhow!("permissions vec![] closing bracket not found"))?;
+    let existing = content[inner_start..vec_end].trim();
+
+    let mut replacement = String::from("vec![\n");
+    if !existing.is_empty() {
+        if existing.contains('\n') {
+            replacement.push_str(existing.trim_end());
+            replacement.push('\n');
+        } else {
+            replacement.push_str("            ");
+            replacement.push_str(existing.trim_end_matches(','));
+            replacement.push_str(",\n");
+        }
+    }
+    replacement.push_str(entries);
+    replacement.push_str("        ]");
+
+    content.replace_range(vec_start..=vec_end, &replacement);
+    Ok(())
+}
+
+fn find_matching_bracket(content: &str, open_index: usize) -> Option<usize> {
+    let bytes = content.as_bytes();
+    let mut depth = 0usize;
+
+    for (index, byte) in bytes.iter().enumerate().skip(open_index) {
+        match byte {
+            b'[' => depth += 1,
+            b']' => {
+                depth = depth.checked_sub(1)?;
+                if depth == 0 {
+                    return Some(index);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    None
 }
 
 fn model_rs(module: &str, table: &str, pascal: &str, fields: &[Field]) -> String {
