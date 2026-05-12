@@ -1,0 +1,37 @@
+name: Template Smoke
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  smoke-template:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install root frontend dependencies
+        run: npm ci
+
+      - name: Check framework
+        run: cargo check --workspace
+
+      - name: Build root frontend
+        run: |
+          npm run build
+          npm run build:ssr
+
+      - name: Smoke generated template
+        env:
+          RWFW_SMOKE_SKIP_DOCKER: "1"
+        run: scripts/smoke-template.sh

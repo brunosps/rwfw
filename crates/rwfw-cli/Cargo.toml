@@ -1,0 +1,18 @@
+[package]
+name = "rwfw-cli"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "rwfw"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+tokio = { workspace = true }
+anyhow = { workspace = true }
+rwfw-core = { path = "../rwfw-core" }
+sea-orm = { workspace = true }
+serde = { workspace = true }
+serde_yaml = "0.9"
+tera = "1.20.1"

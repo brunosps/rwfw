@@ -1,0 +1,25 @@
+database:
+  url: "postgres://rwfw:rwfw@localhost:54329/rwfw_dev"
+
+server:
+  host: "0.0.0.0"
+  port: 3000
+
+logging:
+  level: "debug"
+  format: "pretty"
+
+vite:
+  dev_server: "http://localhost:5173"
+  manifest_path: "dist/client/.vite/manifest.json"
+  ssr_bundle_path: "dist/server/ssr.js"
+
+auth:
+  session_ttl: 86400
+  oidc:
+    redirect_base_url: "http://localhost:3000"
+    providers: {}
+
+blog:
+  posts_per_page: 20
+  allow_comments: true

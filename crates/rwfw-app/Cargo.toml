@@ -1,0 +1,20 @@
+[package]
+name = "rwfw-app"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "rwfw-app"
+path = "src/main.rs"
+
+[dependencies]
+rwfw-core = { path = "../rwfw-core" }
+rwfw-shared = { path = "../rwfw-shared" }
+mod-home = { path = "../modules/home" }
+mod-auth = { path = "../modules/auth" }
+mod-blog = { path = "../modules/blog" }
+tokio = { workspace = true }
+tracing = { workspace = true }
+inventory = { workspace = true }
+axum = { workspace = true }
+anyhow = { workspace = true }

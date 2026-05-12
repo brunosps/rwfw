@@ -1,0 +1,3 @@
+app_package = "rwfw-app"
+app_crate_dir = "crates/rwfw-app"
+modules_dir = "crates/modules"

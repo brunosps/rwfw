@@ -1,0 +1,25 @@
+database:
+  url: "${RWFW__DATABASE__URL}"
+
+server:
+  host: "0.0.0.0"
+  port: 8080
+
+logging:
+  level: "info"
+  format: "json"
+
+vite:
+  dev_server: null
+  manifest_path: "dist/client/.vite/manifest.json"
+  ssr_bundle_path: "dist/server/ssr.js"
+
+auth:
+  session_ttl: 86400
+  oidc:
+    redirect_base_url: "http://localhost:8080"
+    providers: {}
+
+blog:
+  posts_per_page: 20
+  allow_comments: true

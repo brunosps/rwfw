@@ -1,0 +1,23 @@
+[package]
+name = "mod-auth"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+rwfw-core = { path = "../../rwfw-core" }
+rwfw-shared = { path = "../../rwfw-shared" }
+rwfw-macros = { path = "../../rwfw-macros" }
+axum = { workspace = true }
+axum-extra = { workspace = true }
+async-trait = { workspace = true }
+inventory = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sea-orm = { workspace = true }
+tower-sessions = { workspace = true }
+tracing = { workspace = true }
+anyhow = { workspace = true }
+chrono = { workspace = true }
+uuid = { workspace = true }
+validator = { version = "0.20", features = ["derive"] }
+openidconnect = "4.0.1"

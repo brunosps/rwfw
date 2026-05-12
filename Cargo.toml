@@ -1,0 +1,39 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/rwfw-core",
+    "crates/rwfw-shared",
+    "crates/rwfw-macros",
+    "crates/rwfw-cli",
+    "crates/rwfw-app",
+    "crates/modules/home",
+    "crates/modules/auth",
+    "crates/modules/blog",
+]
+
+[workspace.package]
+version = "0.1.0-alpha.1"
+edition = "2024"
+license = "MIT"
+
+[workspace.dependencies]
+axum = { version = "0.8", features = ["macros"] }
+axum-extra = { version = "0.10", features = ["cookie", "typed-header"] }
+tokio = { version = "1", features = ["full"] }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["fs", "trace", "cors"] }
+tower-sessions = "0.14"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sea-orm = { version = "1", features = ["sqlx-postgres", "runtime-tokio-rustls", "macros"] }
+async-trait = "0.1"
+inventory = "0.3"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["json", "env-filter"] }
+dotenvy = "0.15"
+config = "0.14"
+anyhow = "1"
+thiserror = "2"
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1", features = ["v4", "serde"] }
+argon2 = "0.5"
