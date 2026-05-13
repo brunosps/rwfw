@@ -4,7 +4,7 @@ const baseURL = process.env.RWFW_SMOKE_BASE_URL || 'http://localhost:3000'
 const adminEmail = process.env.RWFW_SMOKE_ADMIN_EMAIL || 'admin@example.com'
 const adminPassword = process.env.RWFW_SMOKE_ADMIN_PASSWORD || 'rwfw-admin-123'
 
-test('generated app renders home and product scaffold', async ({ page }) => {
+test('generated app renders blog example and product scaffold', async ({ page }) => {
   const consoleErrors = []
   page.on('console', (message) => {
     if (message.type() === 'error') {
@@ -12,8 +12,9 @@ test('generated app renders home and product scaffold', async ({ page }) => {
     }
   })
 
-  await page.goto(`${baseURL}/`)
-  await expect(page.getByRole('heading', { name: 'Welcome to RWFW' })).toBeVisible()
+  await page.goto(`${baseURL}/blog`)
+  await expect(page.getByRole('heading', { name: 'Um blog CMS com cara de produto real.' })).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Ler posts' })).toBeVisible()
 
   await page.goto(`${baseURL}/auth/login`)
   await page.getByLabel('Email').fill(adminEmail)
