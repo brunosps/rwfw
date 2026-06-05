@@ -116,6 +116,22 @@ impl TestApp {
         report.user_id
     }
 
+    /// Seed a user with a known password (for exercising the login flow).
+    pub async fn seed_user(&self, email: &str, password: &str) {
+        use rwfw_core::auth::{EnsureAdminUserInput, ensure_admin_user};
+        ensure_admin_user(
+            &self.db,
+            EnsureAdminUserInput {
+                name: "Test User",
+                email,
+                password,
+                update_password: true,
+            },
+        )
+        .await
+        .expect("seed user");
+    }
+
     /// GET `path` and extract the CSRF token from its `<meta name="csrf-token">`,
     /// for replaying as the `X-CSRF-Token` header on a subsequent form post
     /// (what Turbo does automatically in the browser).

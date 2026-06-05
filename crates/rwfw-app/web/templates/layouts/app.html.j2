@@ -16,7 +16,15 @@
     {% if auth and auth.user %}
     <div class="border-t border-gray-700 pt-4 mt-4">
       <p class="text-sm text-gray-300">{{ auth.user.name }}</p>
-      <p class="text-xs text-gray-500">{{ auth.user.email }}</p>
+      <p class="text-xs text-gray-500 mb-3">{{ auth.user.email }}</p>
+      <form method="post" action="/auth/logout">
+        <input type="hidden" name="_csrf" value="{{ csrf_token }}">
+        <button type="submit" class="text-xs text-gray-400 hover:text-white">Sign out</button>
+      </form>
+    </div>
+    {% else %}
+    <div class="border-t border-gray-700 pt-4 mt-4">
+      <a href="/auth/login" class="text-xs text-gray-400 hover:text-white">Sign in</a>
     </div>
     {% endif %}
   </aside>

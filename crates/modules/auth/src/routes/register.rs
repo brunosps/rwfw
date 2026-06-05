@@ -1,27 +1,28 @@
 use crate::config::AuthConfig;
 use crate::repositories::user_repo::UserRepository;
 use crate::use_cases::register_user::{RegisterUserInput, RegisterUserUseCase};
-use axum::extract::{Json, State};
-use axum::response::{IntoResponse, Response};
+use axum::extract::{Form, State};
+use axum::http::StatusCode;
+use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing;
 use rwfw_core::app::AppState;
 use rwfw_core::error::AppError;
-use rwfw_core::inertia::Inertia;
+use rwfw_core::view::View;
 
 pub fn route() -> axum::routing::MethodRouter<AppState> {
     routing::get(get).post(post)
 }
 
-/// GET /auth/register - Show registration page
-async fn get(i: Inertia) -> impl IntoResponse {
-    i.render_with_ssr("auth/Register", serde_json::json!({})).await
+/// GET /auth/register - Show registration page.
+async fn get(v: View) -> Response {
+    v.render("auth/register", serde_json::json!({}))
 }
 
-/// POST /auth/register - Process registration
+/// POST /auth/register - Process registration.
 async fn post(
     State(state): State<AppState>,
-    i: Inertia,
-    Json(input): Json<RegisterUserInput>,
+    v: View,
+    Form(input): Form<RegisterUserInput>,
 ) -> Response {
     let repo = UserRepository::new(state.db.clone());
     let use_case = RegisterUserUseCase;
@@ -29,6 +30,9 @@ async fn post(
         .await
         .map(|count| count == 0)
         .unwrap_or(false);
+
+    let name = input.name.clone();
+    let email = input.email.clone();
 
     match use_case.execute(&repo, input).await {
         Ok(output) => {
@@ -43,21 +47,24 @@ async fn post(
             let ttl = session_ttl(&state);
             match rwfw_core::auth::create_session(&state.db, output.user.id, ttl).await {
                 Ok(token) => {
-                    let mut response = Inertia::redirect("/home");
+                    let mut response = Redirect::to("/home").into_response();
                     rwfw_core::auth::append_set_cookie(
                         &mut response,
-                        rwfw_core::auth::session_cookie(
-                            &token,
-                            ttl,
-                            !state.config.is_development(),
-                        ),
+                        rwfw_core::auth::session_cookie(&token, ttl, !state.config.is_development()),
                     );
                     response
                 }
                 Err(error) => AppError::Internal(error).into_response(),
             }
         }
-        Err(AppError::Validation(errors)) => i.redirect_back_with_errors(errors),
+        Err(AppError::Validation(errors)) => v.render_status(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "auth/register",
+            serde_json::json!({
+                "errors": rwfw_core::validation::first_messages(errors),
+                "old": { "name": name, "email": email }
+            }),
+        ),
         Err(error) => error.into_response(),
     }
 }

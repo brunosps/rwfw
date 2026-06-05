@@ -24,7 +24,6 @@ thiserror = { workspace = true }
 chrono = { workspace = true }
 uuid = { workspace = true }
 argon2 = { workspace = true }
-maud = "0.27"
 rust-embed = "8"
 ssr_rs = "0.8"
 minijinja = { version = "2", features = ["loader", "json", "loop_controls"] }
