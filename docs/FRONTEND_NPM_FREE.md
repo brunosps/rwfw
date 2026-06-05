@@ -1,5 +1,9 @@
 # RWFW sem npm: substituindo o motor React por Hotwire + templates Rust
 
+> ✅ **Implementado** (PR #1, branch `feat/npm-free-hotwire`). Este documento é o **registro de decisão/design**,
+> escrito antes da implementação. Para o **guia de uso prático** da stack atual (com exemplos), veja
+> **[docs/FRONTEND.md](FRONTEND.md)**.
+
 Documento de pesquisa/decisão. Objetivo: que os apps gerados pelo `rwfw new` **nasçam sem npm/node**,
 mitigando o risco de ataques à cadeia de suprimentos npm, mantendo SSR, navegação SPA-like e tempo-real,
 com a camada de view **acessível a quem sabe HTML** (não impondo Rust na view).

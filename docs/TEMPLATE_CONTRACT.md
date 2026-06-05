@@ -16,11 +16,11 @@ The generator reads project templates first and falls back to built-in CLI templ
 - `route_create.rs.tera`: create page route.
 - `route_edit.rs.tera`: edit page and update route.
 - `route_item.rs.tera`: show and delete route.
-- `page_index.tsx.tera`: React index page.
-- `form.tsx.tera`: reusable React form.
-- `page_create.tsx.tera`: React create page.
-- `page_edit.tsx.tera`: React edit page.
-- `page_show.tsx.tera`: React show page.
+- `page_index.html.j2.tera`: MiniJinja index page template.
+- `form.html.j2.tera`: reusable MiniJinja form partial template.
+- `page_create.html.j2.tera`: MiniJinja create page template.
+- `page_edit.html.j2.tera`: MiniJinja edit page template.
+- `page_show.html.j2.tera`: MiniJinja show page template.
 
 ## Context
 
