@@ -15,11 +15,9 @@ pub mod pagination;
 pub mod query;
 pub mod rate_limit;
 pub mod repository;
-pub mod ssr;
 pub mod use_case;
 pub mod validation;
 pub mod view;
-pub mod vite;
 
 pub mod prelude {
     pub use crate::app::{AppContext, AppState};

@@ -19,8 +19,6 @@ pub fn registered_modules() -> Vec<Box<dyn Module>> {
 }
 
 pub async fn build_router(config: AppConfig) -> anyhow::Result<Router> {
-    init_ssr_if_available(&config);
-
     let mut app_builder = rwfw_core::app::RwfwApp::new(config)
         .web_root(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("web"));
 
@@ -44,27 +42,4 @@ pub async fn run_migrations(
     let db = rwfw_core::db::connect(config).await?;
     let modules = registered_modules();
     rwfw_core::migration::run_pending_migrations(&db, &modules).await
-}
-
-fn init_ssr_if_available(config: &AppConfig) {
-    if config.is_development() {
-        return;
-    }
-
-    let ssr_bundle_path = config
-        .vite()
-        .ok()
-        .and_then(|vite| vite.ssr_bundle_path)
-        .unwrap_or_else(|| "dist/server/ssr.js".to_string());
-
-    match std::fs::read_to_string(&ssr_bundle_path) {
-        Ok(bundle) => rwfw_core::ssr::init(&bundle),
-        Err(error) => {
-            tracing::warn!(
-                path = %ssr_bundle_path,
-                error = %error,
-                "SSR bundle not available; falling back to CSR shell"
-            );
-        }
-    }
 }

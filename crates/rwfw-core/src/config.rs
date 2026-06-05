@@ -19,13 +19,6 @@ pub struct LoggingConfig {
     pub format: String,
 }
 
-#[derive(Debug, Clone, Deserialize)]
-pub struct ViteConfig {
-    pub dev_server: Option<String>,
-    pub manifest_path: String,
-    pub ssr_bundle_path: Option<String>,
-}
-
 #[derive(Debug, Clone)]
 pub struct AppConfig {
     inner: Config,
@@ -58,10 +51,6 @@ impl AppConfig {
 
     pub fn logging(&self) -> anyhow::Result<LoggingConfig> {
         Ok(self.inner.get::<LoggingConfig>("logging")?)
-    }
-
-    pub fn vite(&self) -> anyhow::Result<ViteConfig> {
-        Ok(self.inner.get::<ViteConfig>("vite")?)
     }
 
     pub fn module_config<T: DeserializeOwned>(&self, module: &str) -> anyhow::Result<T> {

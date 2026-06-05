@@ -25,7 +25,6 @@ chrono = { workspace = true }
 uuid = { workspace = true }
 argon2 = { workspace = true }
 rust-embed = "8"
-ssr_rs = "0.8"
 minijinja = { version = "2", features = ["loader", "json", "loop_controls"] }
 minijinja-autoreload = "2"
 tokio-stream = "0.1"
