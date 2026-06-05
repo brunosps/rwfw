@@ -1,0 +1,26 @@
+{% extends "layouts/app.html.j2" %}
+{% block title %}{{ title }}{% endblock %}
+{% block content %}
+<div class="max-w-4xl">
+  <h1 class="text-4xl font-bold text-gray-900 mb-4">{{ title }}</h1>
+  <p class="text-lg text-gray-600 mb-8">{{ description }}</p>
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+    <div class="p-6 bg-white rounded-lg shadow-sm border">
+      <h2 class="text-xl font-semibold mb-2">Modular Architecture</h2>
+      <p class="text-gray-600">Each module is self-contained with its own routes, models, and templates.</p>
+    </div>
+    <div class="p-6 bg-white rounded-lg shadow-sm border">
+      <h2 class="text-xl font-semibold mb-2">Hotwire + MiniJinja</h2>
+      <p class="text-gray-600">Server-rendered HTML with Turbo navigation — no hydration, no npm.</p>
+    </div>
+    <div class="p-6 bg-white rounded-lg shadow-sm border">
+      <h2 class="text-xl font-semibold mb-2">Turbo Streams</h2>
+      <p class="text-gray-600">Real-time partial updates over SSE/WebSocket without a JS framework.</p>
+    </div>
+    <div class="p-6 bg-white rounded-lg shadow-sm border">
+      <h2 class="text-xl font-semibold mb-2">Single Binary Deploy</h2>
+      <p class="text-gray-600">All assets embedded in one Rust binary for simple deployment.</p>
+    </div>
+  </div>
+</div>
+{% endblock %}
