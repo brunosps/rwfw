@@ -7,6 +7,9 @@ node_modules/
 dist/
 .playwright-mcp/
 
+# RWFW local tooling cache (Tailwind/Chromium standalone binaries, temp configs)
+.rwfw/
+
 # Environment
 .env
 .env.local

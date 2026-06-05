@@ -7,31 +7,52 @@ on:
       - main
 
 jobs:
-  smoke-template:
+  test:
     runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: rwfw_test
+          POSTGRES_USER: rwfw
+          POSTGRES_PASSWORD: rwfw
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U rwfw -d rwfw_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    env:
+      RWFW_TEST_DATABASE_URL: postgres://rwfw:rwfw@localhost:5432/rwfw_test
 
     steps:
       - uses: actions/checkout@v4
 
       - uses: dtolnay/rust-toolchain@stable
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-
-      - name: Install root frontend dependencies
-        run: npm ci
-
       - name: Check framework
         run: cargo check --workspace
 
-      - name: Build root frontend
-        run: |
-          npm run build
-          npm run build:ssr
+      # npm-free: the framework and its dogfood app render via MiniJinja/Hotwire.
+      - name: Test framework (with Postgres)
+        run: cargo test --workspace
+
+      - name: Install Chromium for browser e2e
+        uses: browser-actions/setup-chrome@v1
+
+      - name: Browser e2e (chromiumoxide — no Node/Playwright)
+        env:
+          RWFW_E2E: "1"
+        run: cargo test -p rwfw-app --test e2e
 
       - name: Smoke generated template
         env:
           RWFW_SMOKE_SKIP_DOCKER: "1"
+          # The CLI-generated example app is still being ported off React; skip its
+          # npm/Playwright phases until the generator overhaul lands.
+          RWFW_SMOKE_SKIP_NPM: "1"
+          RWFW_SMOKE_SKIP_PLAYWRIGHT: "1"
         run: scripts/smoke-template.sh

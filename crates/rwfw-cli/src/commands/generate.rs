@@ -157,7 +157,7 @@ fn generate_scaffold_files(context: &ResourceContext, fields: &[Field]) -> anyho
     fs::create_dir_all(
         context
             .module_dir
-            .join(format!("web/pages/{}", context.table)),
+            .join(format!("web/templates/{}", context.table)),
     )?;
     fs::create_dir_all(context.module_dir.join("src/repositories"))?;
     fs::create_dir_all(context.module_dir.join("src/use_cases"))?;
@@ -343,25 +343,31 @@ fn generate_scaffold_files(context: &ResourceContext, fields: &[Field]) -> anyho
         &item_route_content,
     )?;
     let page_content = render_resource_template(
-        "page_index.tsx.tera",
-        context,
-        None,
-        fields,
-        resource_index_page_tsx(&context.module, &context.table, &context.pascal, fields),
-    )?;
-    write_new(
-        &context
-            .module_dir
-            .join(format!("web/pages/{}/Index.tsx", context.table)),
-        &page_content,
-    )?;
-    let form_content = render_resource_template(
-        "form.tsx.tera",
+        "page_index.html.j2.tera",
         context,
         None,
         fields,
         render_builtin_resource_template(
-            "form.tsx.tera",
+            "page_index.html.j2.tera",
+            context,
+            None,
+            fields,
+            BUILTIN_PAGE_INDEX_TEMPLATE,
+        )?,
+    )?;
+    write_new(
+        &context
+            .module_dir
+            .join(format!("web/templates/{}/index.html.j2", context.table)),
+        &page_content,
+    )?;
+    let form_content = render_resource_template(
+        "form.html.j2.tera",
+        context,
+        None,
+        fields,
+        render_builtin_resource_template(
+            "form.html.j2.tera",
             context,
             None,
             fields,
@@ -371,16 +377,16 @@ fn generate_scaffold_files(context: &ResourceContext, fields: &[Field]) -> anyho
     write_new(
         &context
             .module_dir
-            .join(format!("web/pages/{}/Form.tsx", context.table)),
+            .join(format!("web/templates/{}/_form.html.j2", context.table)),
         &form_content,
     )?;
     let create_page_content = render_resource_template(
-        "page_create.tsx.tera",
+        "page_create.html.j2.tera",
         context,
         None,
         fields,
         render_builtin_resource_template(
-            "page_create.tsx.tera",
+            "page_create.html.j2.tera",
             context,
             None,
             fields,
@@ -390,16 +396,16 @@ fn generate_scaffold_files(context: &ResourceContext, fields: &[Field]) -> anyho
     write_new(
         &context
             .module_dir
-            .join(format!("web/pages/{}/Create.tsx", context.table)),
+            .join(format!("web/templates/{}/create.html.j2", context.table)),
         &create_page_content,
     )?;
     let edit_page_content = render_resource_template(
-        "page_edit.tsx.tera",
+        "page_edit.html.j2.tera",
         context,
         None,
         fields,
         render_builtin_resource_template(
-            "page_edit.tsx.tera",
+            "page_edit.html.j2.tera",
             context,
             None,
             fields,
@@ -409,16 +415,16 @@ fn generate_scaffold_files(context: &ResourceContext, fields: &[Field]) -> anyho
     write_new(
         &context
             .module_dir
-            .join(format!("web/pages/{}/Edit.tsx", context.table)),
+            .join(format!("web/templates/{}/edit.html.j2", context.table)),
         &edit_page_content,
     )?;
     let show_page_content = render_resource_template(
-        "page_show.tsx.tera",
+        "page_show.html.j2.tera",
         context,
         None,
         fields,
         render_builtin_resource_template(
-            "page_show.tsx.tera",
+            "page_show.html.j2.tera",
             context,
             None,
             fields,
@@ -428,7 +434,7 @@ fn generate_scaffold_files(context: &ResourceContext, fields: &[Field]) -> anyho
     write_new(
         &context
             .module_dir
-            .join(format!("web/pages/{}/Show.tsx", context.table)),
+            .join(format!("web/templates/{}/show.html.j2", context.table)),
         &show_page_content,
     )?;
 
@@ -623,9 +629,10 @@ use crate::repositories::{{ name_snake }}_repo::{Create{{ name_pascal }}, {{ nam
 use rwfw_core::error::AppError;
 use std::collections::HashMap;
 
-#[derive(Debug, serde::Deserialize)]
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct Create{{ name_pascal }}Input {
-{% for field in fields %}    pub {{ field.name }}: {{ field.input_rust_type }},
+{% for field in fields %}{% if field.is_bool %}    #[serde(default, deserialize_with = "rwfw_core::forms::checkbox")]
+{% endif %}    pub {{ field.name }}: {{ field.input_rust_type }},
 {% endfor %}}
 
 pub struct Create{{ name_pascal }}Output {
@@ -791,9 +798,10 @@ use crate::repositories::{{ name_snake }}_repo::{Update{{ name_pascal }}, {{ nam
 use rwfw_core::error::AppError;
 use std::collections::HashMap;
 
-#[derive(Debug, serde::Deserialize)]
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct Update{{ name_pascal }}Input {
-{% for field in fields %}    pub {{ field.name }}: {{ field.input_rust_type }},
+{% for field in fields %}{% if field.is_bool %}    #[serde(default, deserialize_with = "rwfw_core::forms::checkbox")]
+{% endif %}    pub {{ field.name }}: {{ field.input_rust_type }},
 {% endfor %}}
 
 pub struct Update{{ name_pascal }}Output {
@@ -972,15 +980,16 @@ impl Delete{{ name_pascal }}UseCase {
 }
 "#;
 
-const BUILTIN_ROUTE_INDEX_TEMPLATE: &str = r#"use crate::repositories::{{ name_snake }}_repo::{{ name_pascal }}Repository;
+pub(crate) const BUILTIN_ROUTE_INDEX_TEMPLATE: &str = r#"use crate::repositories::{{ name_snake }}_repo::{{ name_pascal }}Repository;
 use crate::use_cases::create_{{ name_snake }}::{Create{{ name_pascal }}Input, Create{{ name_pascal }}UseCase};
-use axum::extract::{Json, Query, State};
-use axum::response::{IntoResponse, Response};
+use axum::extract::{Form, Query, State};
+use axum::http::StatusCode;
+use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing;
 use rwfw_core::app::AppState;
 use rwfw_core::auth::CurrentUser;
 use rwfw_core::error::AppError;
-use rwfw_core::inertia::Inertia;
+use rwfw_core::view::View;
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
@@ -996,7 +1005,7 @@ pub fn route() -> axum::routing::MethodRouter<AppState> {
 async fn get(
     State(state): State<AppState>,
     user: CurrentUser,
-    i: Inertia,
+    v: View,
     Query(params): Query<ListParams>,
 ) -> Response {
     if !user.can("{{ module }}.{{ table }}.view") {
@@ -1013,8 +1022,8 @@ async fn get(
     };
     let total_pages = if total == 0 { 1 } else { total.div_ceil(per_page) };
 
-    i.render_with_ssr(
-        "{{ module }}/{{ table }}/Index",
+    v.render(
+        "{{ module }}/{{ table }}/index",
         serde_json::json!({
             "items": items,
             "filters": {
@@ -1028,69 +1037,76 @@ async fn get(
             }
         }),
     )
-    .await
 }
 
 async fn post(
     State(state): State<AppState>,
     user: CurrentUser,
-    i: Inertia,
-    Json(input): Json<Create{{ name_pascal }}Input>,
+    v: View,
+    Form(input): Form<Create{{ name_pascal }}Input>,
 ) -> Response {
     if !user.can("{{ module }}.{{ table }}.create") {
         return AppError::Forbidden("Missing permission: {{ module }}.{{ table }}.create".into()).into_response();
     }
 
+    let old = serde_json::to_value(&input).unwrap_or_default();
     let repo = {{ name_pascal }}Repository::new(state.db.clone());
     let use_case = Create{{ name_pascal }}UseCase;
 
     match use_case.execute(&repo, input).await {
-        Ok(_) => Inertia::redirect_with_success("/{{ module }}/{{ table }}", "{{ name_pascal }} created."),
-        Err(AppError::Validation(errors)) => i.redirect_back_with_errors(errors),
+        Ok(_) => Redirect::to("/{{ module }}/{{ table }}").into_response(),
+        Err(AppError::Validation(errors)) => v.render_status(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "{{ module }}/{{ table }}/create",
+            serde_json::json!({
+                "old": old,
+                "errors": rwfw_core::validation::first_messages(errors),
+            }),
+        ),
         Err(error) => error.into_response(),
     }
 }
 "#;
 
-const BUILTIN_ROUTE_CREATE_TEMPLATE: &str = r#"use axum::response::IntoResponse;
+pub(crate) const BUILTIN_ROUTE_CREATE_TEMPLATE: &str = r#"use axum::response::{IntoResponse, Response};
 use axum::routing;
 use rwfw_core::app::AppState;
 use rwfw_core::auth::CurrentUser;
 use rwfw_core::error::AppError;
-use rwfw_core::inertia::Inertia;
+use rwfw_core::view::View;
 
 pub fn route() -> axum::routing::MethodRouter<AppState> {
     routing::get(get)
 }
 
-async fn get(user: CurrentUser, i: Inertia) -> impl IntoResponse {
+async fn get(user: CurrentUser, v: View) -> Response {
     if !user.can("{{ module }}.{{ table }}.create") {
         return AppError::Forbidden("Missing permission: {{ module }}.{{ table }}.create".into()).into_response();
     }
 
-    i.render_with_ssr("{{ module }}/{{ table }}/Create", serde_json::json!({}))
-        .await
+    v.render("{{ module }}/{{ table }}/create", serde_json::json!({}))
 }
 "#;
 
-const BUILTIN_ROUTE_EDIT_TEMPLATE: &str = r#"use crate::repositories::{{ name_snake }}_repo::{{ name_pascal }}Repository;
+pub(crate) const BUILTIN_ROUTE_EDIT_TEMPLATE: &str = r#"use crate::repositories::{{ name_snake }}_repo::{{ name_pascal }}Repository;
 use crate::use_cases::update_{{ name_snake }}::{Update{{ name_pascal }}Input, Update{{ name_pascal }}UseCase};
-use axum::extract::{Json, Path, State};
-use axum::response::{IntoResponse, Response};
+use axum::extract::{Form, Path, State};
+use axum::http::StatusCode;
+use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing;
 use rwfw_core::app::AppState;
 use rwfw_core::auth::CurrentUser;
 use rwfw_core::error::AppError;
-use rwfw_core::inertia::Inertia;
+use rwfw_core::view::View;
 
 pub fn route() -> axum::routing::MethodRouter<AppState> {
-    routing::get(get).put(put)
+    routing::get(get).post(put)
 }
 
 async fn get(
     State(state): State<AppState>,
     user: CurrentUser,
-    i: Inertia,
+    v: View,
     Path(id): Path<i32>,
 ) -> Response {
     if !user.can("{{ module }}.{{ table }}.update") {
@@ -1104,46 +1120,57 @@ async fn get(
         Err(error) => return AppError::Internal(error).into_response(),
     };
 
-    i.render_with_ssr(
-        "{{ module }}/{{ table }}/Edit",
+    v.render(
+        "{{ module }}/{{ table }}/edit",
         serde_json::json!({
             "item": item
         }),
     )
-    .await
 }
 
+// HTML forms can't issue PUT, so the edit form POSTs here.
 async fn put(
     State(state): State<AppState>,
     user: CurrentUser,
-    i: Inertia,
+    v: View,
     Path(id): Path<i32>,
-    Json(input): Json<Update{{ name_pascal }}Input>,
+    Form(input): Form<Update{{ name_pascal }}Input>,
 ) -> Response {
     if !user.can("{{ module }}.{{ table }}.update") {
         return AppError::Forbidden("Missing permission: {{ module }}.{{ table }}.update".into()).into_response();
     }
 
+    let mut old = serde_json::to_value(&input).unwrap_or_default();
+    if let Some(map) = old.as_object_mut() {
+        map.insert("id".to_string(), serde_json::json!(id));
+    }
     let repo = {{ name_pascal }}Repository::new(state.db.clone());
     let use_case = Update{{ name_pascal }}UseCase;
 
     match use_case.execute(&repo, id, input).await {
-        Ok(_) => Inertia::redirect_with_success("/{{ module }}/{{ table }}", "{{ name_pascal }} updated."),
-        Err(AppError::Validation(errors)) => i.redirect_back_with_errors(errors),
+        Ok(_) => Redirect::to("/{{ module }}/{{ table }}").into_response(),
+        Err(AppError::Validation(errors)) => v.render_status(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "{{ module }}/{{ table }}/edit",
+            serde_json::json!({
+                "item": old,
+                "errors": rwfw_core::validation::first_messages(errors),
+            }),
+        ),
         Err(error) => error.into_response(),
     }
 }
 "#;
 
-const BUILTIN_ROUTE_ITEM_TEMPLATE: &str = r#"use crate::repositories::{{ name_snake }}_repo::{{ name_pascal }}Repository;
+pub(crate) const BUILTIN_ROUTE_ITEM_TEMPLATE: &str = r#"use crate::repositories::{{ name_snake }}_repo::{{ name_pascal }}Repository;
 use crate::use_cases::delete_{{ name_snake }}::Delete{{ name_pascal }}UseCase;
 use axum::extract::{Path, State};
-use axum::response::{IntoResponse, Response};
+use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing;
 use rwfw_core::app::AppState;
 use rwfw_core::auth::CurrentUser;
 use rwfw_core::error::AppError;
-use rwfw_core::inertia::Inertia;
+use rwfw_core::view::View;
 
 pub fn route() -> axum::routing::MethodRouter<AppState> {
     routing::get(get).delete(delete)
@@ -1152,7 +1179,7 @@ pub fn route() -> axum::routing::MethodRouter<AppState> {
 async fn get(
     State(state): State<AppState>,
     user: CurrentUser,
-    i: Inertia,
+    v: View,
     Path(id): Path<i32>,
 ) -> Response {
     if !user.can("{{ module }}.{{ table }}.view") {
@@ -1166,13 +1193,12 @@ async fn get(
         Err(error) => return AppError::Internal(error).into_response(),
     };
 
-    i.render_with_ssr(
-        "{{ module }}/{{ table }}/Show",
+    v.render(
+        "{{ module }}/{{ table }}/show",
         serde_json::json!({
             "item": item
         }),
     )
-    .await
 }
 
 async fn delete(State(state): State<AppState>, user: CurrentUser, Path(id): Path<i32>) -> Response {
@@ -1184,239 +1210,148 @@ async fn delete(State(state): State<AppState>, user: CurrentUser, Path(id): Path
     let use_case = Delete{{ name_pascal }}UseCase;
 
     match use_case.execute(&repo, id).await {
-        Ok(()) => Inertia::redirect_with_success("/{{ module }}/{{ table }}", "{{ name_pascal }} deleted."),
+        Ok(()) => Redirect::to("/{{ module }}/{{ table }}").into_response(),
         Err(error) => error.into_response(),
     }
 }
 "#;
 
-const BUILTIN_FORM_TEMPLATE: &str = r#"import type { FormEvent } from 'react'
-import { Link } from '@inertiajs/react'
+// Scaffold page templates are *Tera* sources that render to *MiniJinja*
+// templates. Both engines use `{{ }}`/`{% %}`, so MiniJinja runtime tags are
+// emitted literally via Tera string output (`{{ "{{" }}` -> `{{`), while
+// Tera-time loops/vars (`{% for field in fields %}`, `{{ field.name }}`,
+// `{{ module }}`...) expand at generation time.
+pub(crate) const BUILTIN_PAGE_INDEX_TEMPLATE: &str = r#"{{ "{%" }} extends "layouts/app.html.j2" {{ "%}" }}
+{{ "{%" }} block title {{ "%}" }}{{ name_pascal }}{{ "{%" }} endblock {{ "%}" }}
+{{ "{%" }} block content {{ "%}" }}
+<div class="max-w-5xl">
+  <div class="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+    <h1 class="text-3xl font-bold text-gray-900">{{ name_pascal }}</h1>
+    <a href="/{{ module }}/{{ table }}/create" class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">New {{ name_pascal }}</a>
+  </div>
 
-type FormData = Record<string, string | boolean>
+  <form method="get" action="/{{ module }}/{{ table }}" class="mb-4 flex gap-3 rounded-lg border bg-white p-4 shadow-sm">
+    <input name="q" type="search" value="{{ "{{" }} filters.q | default('') {{ "}}" }}" placeholder="Search {{ table }}..."
+           class="min-w-0 flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none">
+    <button type="submit" class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">Search</button>
+    {{ "{%" }} if filters.q {{ "%}" }}<a href="/{{ module }}/{{ table }}" class="rounded-md border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50">Clear</a>{{ "{%" }} endif {{ "%}" }}
+  </form>
 
-interface Props {
-  data: FormData
-  setData: (field: string, value: string | boolean) => void
-  processing: boolean
-  errors: Record<string, string | undefined>
-  submitLabel: string
-  cancelHref: string
-  onSubmit: (event: FormEvent<HTMLFormElement>) => void
-}
+  <div class="overflow-hidden rounded-lg border bg-white shadow-sm">
+    <table class="min-w-full divide-y divide-gray-200 text-sm">
+      <thead class="bg-gray-50">
+        <tr>
+{% for field in fields %}          <th class="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider text-gray-500">{{ field.title }}</th>
+{% endfor %}          <th class="px-4 py-2 text-right text-xs font-medium uppercase tracking-wider text-gray-500">Actions</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-gray-100">
+        {{ "{%" }} for item in items {{ "%}" }}
+        <tr>
+{% for field in fields %}          <td class="px-4 py-2">{{ "{{" }} item.{{ field.name }} | default('') {{ "}}" }}</td>
+{% endfor %}          <td class="px-4 py-2 text-right">
+            <a href="/{{ module }}/{{ table }}/{{ "{{" }} item.id {{ "}}" }}" class="text-blue-600 hover:underline">View</a>
+            <a href="/{{ module }}/{{ table }}/{{ "{{" }} item.id {{ "}}" }}/edit" class="ml-3 text-blue-600 hover:underline">Edit</a>
+            <a href="/{{ module }}/{{ table }}/{{ "{{" }} item.id {{ "}}" }}" data-turbo-method="delete"
+               data-turbo-confirm="Delete this {{ name_pascal }}?" class="ml-3 text-red-600 hover:underline">Delete</a>
+          </td>
+        </tr>
+        {{ "{%" }} endfor {{ "%}" }}
+        {{ "{%" }} if items | length == 0 {{ "%}" }}
+        <tr><td class="px-4 py-6 text-gray-500" colspan="{{ fields_colspan }}">No records yet.</td></tr>
+        {{ "{%" }} endif {{ "%}" }}
+      </tbody>
+    </table>
+  </div>
 
-export default function {{ name_pascal }}Form({
-  data,
-  setData,
-  processing,
-  errors,
-  submitLabel,
-  cancelHref,
-  onSubmit,
-}: Props) {
-  return (
-    <form onSubmit={onSubmit} className="space-y-5 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-{% for field in fields %}{% if field.is_bool %}      <label className="flex items-center gap-3 rounded-xl border border-slate-200 px-4 py-3">
-        <input
-          id="{{ field.name }}"
-          type="checkbox"
-          checked={Boolean(data['{{ field.name }}'])}
-          onChange={(event) => setData('{{ field.name }}', event.target.checked)}
-          className="h-4 w-4 rounded border-slate-300 text-slate-950 focus:ring-slate-950"
-        />
-        <span className="text-sm font-medium text-slate-800">
-          {{ field.title }}{% if field.optional %} <span className="text-xs font-normal text-slate-500">(optional)</span>{% endif %}
-        </span>
-      </label>
-      {errors['{{ field.name }}'] && <p className="text-sm text-red-600">{errors['{{ field.name }}']}</p>}
-{% else %}      <div>
-        <label htmlFor="{{ field.name }}" className="mb-1 block text-sm font-medium text-slate-700">
-          {{ field.title }}{% if field.optional %} <span className="text-xs font-normal text-slate-500">(optional)</span>{% endif %}
-        </label>
-{% if field.is_text %}        <textarea
-          id="{{ field.name }}"
-          value={String(data['{{ field.name }}'] ?? '')}
-          onChange={(event) => setData('{{ field.name }}', event.target.value)}
-          rows={6}
-          className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-950"
-        />
-{% else %}        <input
-          id="{{ field.name }}"
-          type="{{ field.input_type }}"
-{% if field.has_input_step %}          step="{{ field.input_step }}"
-{% endif %}          value={String(data['{{ field.name }}'] ?? '')}
-          onChange={(event) => setData('{{ field.name }}', event.target.value)}
-          className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-950"
-        />
-{% endif %}        {errors['{{ field.name }}'] && <p className="mt-1 text-sm text-red-600">{errors['{{ field.name }}']}</p>}
-      </div>
-{% endif %}{% endfor %}      <div className="flex items-center gap-3 pt-2">
-        <button
-          type="submit"
-          disabled={processing}
-          className="rounded-xl bg-slate-950 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
-        >
-          {processing ? 'Saving...' : submitLabel}
-        </button>
-        <Link
-          href={cancelHref}
-          className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-        >
-          Cancel
-        </Link>
-      </div>
-    </form>
-  )
-}
+  {{ "{%" }} if pagination.total_pages > 1 {{ "%}" }}
+  <div class="mt-6 flex items-center justify-between text-sm">
+    {{ "{%" }} if pagination.page > 1 {{ "%}" }}<a href="/{{ module }}/{{ table }}?page={{ "{{" }} pagination.page - 1 {{ "}}" }}{{ "{%" }} if filters.q {{ "%}" }}&q={{ "{{" }} filters.q {{ "}}" }}{{ "{%" }} endif {{ "%}" }}" class="rounded-md border border-gray-300 px-3 py-2 font-semibold text-gray-700 hover:bg-gray-50">Previous</a>{{ "{%" }} else {{ "%}" }}<span></span>{{ "{%" }} endif {{ "%}" }}
+    <span class="text-gray-500">Page {{ "{{" }} pagination.page {{ "}}" }} of {{ "{{" }} pagination.total_pages {{ "}}" }}</span>
+    {{ "{%" }} if pagination.page < pagination.total_pages {{ "%}" }}<a href="/{{ module }}/{{ table }}?page={{ "{{" }} pagination.page + 1 {{ "}}" }}{{ "{%" }} if filters.q {{ "%}" }}&q={{ "{{" }} filters.q {{ "}}" }}{{ "{%" }} endif {{ "%}" }}" class="rounded-md border border-gray-300 px-3 py-2 font-semibold text-gray-700 hover:bg-gray-50">Next</a>{{ "{%" }} else {{ "%}" }}<span></span>{{ "{%" }} endif {{ "%}" }}
+  </div>
+  {{ "{%" }} endif {{ "%}" }}
+</div>
+{{ "{%" }} endblock {{ "%}" }}
 "#;
 
-const BUILTIN_PAGE_CREATE_TEMPLATE: &str = r#"import type { FormEvent } from 'react'
-import { useForm } from '@inertiajs/react'
-import AppLayout from '@app/layouts/AppLayout'
-import {{ name_pascal }}Form from './Form'
-
-type FormData = Record<string, string | boolean>
-
-export default function {{ name_pascal }}Create() {
-  const { data, setData, post, processing, errors } = useForm({
-{% for field in fields %}    '{{ field.name }}': {% if field.is_bool %}false{% else %}''{% endif %},
-{% endfor %}  })
-  const formData = data as FormData
-  const setFormData = setData as (field: string, value: string | boolean) => void
-  const formErrors = errors as Record<string, string | undefined>
-
-  function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    post('/{{ module }}/{{ table }}')
-  }
-
-  return (
-    <AppLayout>
-      <div className="max-w-3xl">
-        <div className="mb-8">
-          <p className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">{{ table }}</p>
-          <h1 className="mt-2 text-3xl font-bold text-slate-950">New {{ name_pascal }}</h1>
-        </div>
-        <{{ name_pascal }}Form
-          data={formData}
-          setData={setFormData}
-          processing={processing}
-          errors={formErrors}
-          submitLabel="Create {{ name_pascal }}"
-          cancelHref="/{{ module }}/{{ table }}"
-          onSubmit={submit}
-        />
-      </div>
-    </AppLayout>
-  )
-}
+pub(crate) const BUILTIN_FORM_TEMPLATE: &str = r#"<form method="post" action="{{ "{{" }} action {{ "}}" }}" class="space-y-5 rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
+  <input type="hidden" name="_csrf" value="{{ "{{" }} csrf_token {{ "}}" }}">
+{% for field in fields %}{% if field.is_bool %}  <label class="flex items-center gap-3 rounded-md border border-gray-200 px-4 py-3">
+    <input id="{{ field.name }}" name="{{ field.name }}" type="checkbox" value="on"
+           {{ "{%" }} if old.{{ field.name }} | default(item.{{ field.name }}) {{ "%}" }}checked{{ "{%" }} endif {{ "%}" }}
+           class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+    <span class="text-sm font-medium text-gray-800">{{ field.title }}{% if field.optional %} <span class="text-xs font-normal text-gray-500">(optional)</span>{% endif %}</span>
+  </label>
+  {{ "{%" }} if errors.{{ field.name }} {{ "%}" }}<p class="text-sm text-red-600">{{ "{{" }} errors.{{ field.name }} {{ "}}" }}</p>{{ "{%" }} endif {{ "%}" }}
+{% else %}  <div>
+    <label for="{{ field.name }}" class="mb-1 block text-sm font-medium text-gray-700">{{ field.title }}{% if field.optional %} <span class="text-xs font-normal text-gray-500">(optional)</span>{% endif %}</label>
+{% if field.is_text %}    <textarea id="{{ field.name }}" name="{{ field.name }}" rows="6"
+              class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none">{{ "{{" }} old.{{ field.name }} | default(item.{{ field.name }}) | default('') {{ "}}" }}</textarea>
+{% else %}    <input id="{{ field.name }}" name="{{ field.name }}" type="{{ field.input_type }}"{% if field.has_input_step %} step="{{ field.input_step }}"{% endif %}
+           value="{{ "{{" }} old.{{ field.name }} | default(item.{{ field.name }}) | default('') {{ "}}" }}"
+           class="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none">
+{% endif %}    {{ "{%" }} if errors.{{ field.name }} {{ "%}" }}<p class="mt-1 text-sm text-red-600">{{ "{{" }} errors.{{ field.name }} {{ "}}" }}</p>{{ "{%" }} endif {{ "%}" }}
+  </div>
+{% endif %}{% endfor %}  <div class="flex items-center gap-3 pt-2">
+    <button type="submit" data-turbo-submits-with="Saving..." class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60">{{ "{{" }} submit_label {{ "}}" }}</button>
+    <a href="/{{ module }}/{{ table }}" class="rounded-md border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50">Cancel</a>
+  </div>
+</form>
 "#;
 
-const BUILTIN_PAGE_EDIT_TEMPLATE: &str = r#"import type { FormEvent } from 'react'
-import { useForm } from '@inertiajs/react'
-import AppLayout from '@app/layouts/AppLayout'
-import {{ name_pascal }}Form from './Form'
-
-type FormData = Record<string, string | boolean>
-
-interface Props {
-  item: Record<string, unknown> & { id: number }
-}
-{% if has_datetime %}
-function datetimeLocalValue(value: unknown) {
-  return value === null || value === undefined ? '' : String(value).slice(0, 16)
-}
-{% endif %}
-
-export default function {{ name_pascal }}Edit({ item }: Props) {
-  const { data, setData, put, processing, errors } = useForm({
-{% for field in fields %}    '{{ field.name }}': {% if field.is_bool %}Boolean(item['{{ field.name }}']){% elif field.is_datetime %}datetimeLocalValue(item['{{ field.name }}']){% else %}String(item['{{ field.name }}'] ?? ''){% endif %},
-{% endfor %}  })
-  const formData = data as FormData
-  const setFormData = setData as (field: string, value: string | boolean) => void
-  const formErrors = errors as Record<string, string | undefined>
-
-  function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    put(`/{{ module }}/{{ table }}/${item.id}/edit`)
-  }
-
-  return (
-    <AppLayout>
-      <div className="max-w-3xl">
-        <div className="mb-8">
-          <p className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">{{ table }}</p>
-          <h1 className="mt-2 text-3xl font-bold text-slate-950">Edit {{ name_pascal }}</h1>
-        </div>
-        <{{ name_pascal }}Form
-          data={formData}
-          setData={setFormData}
-          processing={processing}
-          errors={formErrors}
-          submitLabel="Save {{ name_pascal }}"
-          cancelHref="/{{ module }}/{{ table }}"
-          onSubmit={submit}
-        />
-      </div>
-    </AppLayout>
-  )
-}
+pub(crate) const BUILTIN_PAGE_CREATE_TEMPLATE: &str = r#"{{ "{%" }} extends "layouts/app.html.j2" {{ "%}" }}
+{{ "{%" }} block title {{ "%}" }}New {{ name_pascal }}{{ "{%" }} endblock {{ "%}" }}
+{{ "{%" }} block content {{ "%}" }}
+<div class="max-w-3xl">
+  <div class="mb-8">
+    <h1 class="text-3xl font-bold text-gray-900">New {{ name_pascal }}</h1>
+  </div>
+  {{ "{%" }} set action = "/{{ module }}/{{ table }}" {{ "%}" }}
+  {{ "{%" }} set submit_label = "Create {{ name_pascal }}" {{ "%}" }}
+  {{ "{%" }} include "{{ module }}/{{ table }}/_form.html.j2" {{ "%}" }}
+</div>
+{{ "{%" }} endblock {{ "%}" }}
 "#;
 
-const BUILTIN_PAGE_SHOW_TEMPLATE: &str = r#"import { Link, router } from '@inertiajs/react'
-import AppLayout from '@app/layouts/AppLayout'
+pub(crate) const BUILTIN_PAGE_EDIT_TEMPLATE: &str = r#"{{ "{%" }} extends "layouts/app.html.j2" {{ "%}" }}
+{{ "{%" }} block title {{ "%}" }}Edit {{ name_pascal }}{{ "{%" }} endblock {{ "%}" }}
+{{ "{%" }} block content {{ "%}" }}
+<div class="max-w-3xl">
+  <div class="mb-8">
+    <h1 class="text-3xl font-bold text-gray-900">Edit {{ name_pascal }}</h1>
+  </div>
+  {{ "{%" }} set action = "/{{ module }}/{{ table }}/" ~ item.id ~ "/edit" {{ "%}" }}
+  {{ "{%" }} set submit_label = "Save {{ name_pascal }}" {{ "%}" }}
+  {{ "{%" }} include "{{ module }}/{{ table }}/_form.html.j2" {{ "%}" }}
+</div>
+{{ "{%" }} endblock {{ "%}" }}
+"#;
 
-interface Props {
-  item: Record<string, unknown> & { id: number }
-}
+pub(crate) const BUILTIN_PAGE_SHOW_TEMPLATE: &str = r#"{{ "{%" }} extends "layouts/app.html.j2" {{ "%}" }}
+{{ "{%" }} block title {{ "%}" }}{{ name_pascal }} #{{ "{{" }} item.id {{ "}}" }}{{ "{%" }} endblock {{ "%}" }}
+{{ "{%" }} block content {{ "%}" }}
+<div class="max-w-3xl">
+  <div class="mb-8 flex items-start justify-between gap-4">
+    <h1 class="text-3xl font-bold text-gray-900">{{ name_pascal }} #{{ "{{" }} item.id {{ "}}" }}</h1>
+    <div class="flex gap-3">
+      <a href="/{{ module }}/{{ table }}" class="rounded-md border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50">Back</a>
+      <a href="/{{ module }}/{{ table }}/{{ "{{" }} item.id {{ "}}" }}/edit" class="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">Edit</a>
+    </div>
+  </div>
 
-export default function {{ name_pascal }}Show({ item }: Props) {
-  return (
-    <AppLayout>
-      <div className="max-w-3xl">
-        <div className="mb-8 flex items-start justify-between gap-4">
-          <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">{{ table }}</p>
-            <h1 className="mt-2 text-3xl font-bold text-slate-950">{{ name_pascal }} #{item.id}</h1>
-          </div>
-          <div className="flex gap-3">
-            <Link
-              href="/{{ module }}/{{ table }}"
-              className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-            >
-              Back
-            </Link>
-            <Link
-              href={`/{{ module }}/{{ table }}/${item.id}/edit`}
-              className="rounded-xl bg-slate-950 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
-            >
-              Edit
-            </Link>
-          </div>
-        </div>
+  <dl class="overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
+{% for field in fields %}    <div class="border-b border-gray-100 px-6 py-4 last:border-b-0">
+      <dt class="text-xs font-semibold uppercase tracking-wider text-gray-500">{{ field.title }}</dt>
+      <dd class="mt-2 whitespace-pre-wrap text-sm text-gray-900">{{ "{{" }} item.{{ field.name }} | default('') {{ "}}" }}</dd>
+    </div>
+{% endfor %}  </dl>
 
-        <dl className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-{% for field in fields %}          <div className="border-b border-slate-100 px-6 py-4 last:border-b-0">
-            <dt className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">{{ field.title }}</dt>
-            <dd className="mt-2 whitespace-pre-wrap text-sm text-slate-900">{String(item['{{ field.name }}'] ?? '')}</dd>
-          </div>
-{% endfor %}        </dl>
-
-        <button
-          type="button"
-          onClick={() => {
-            if (window.confirm('Delete this {{ name_pascal }}?')) {
-              router.delete('/{{ module }}/{{ table }}/' + item.id)
-            }
-          }}
-          className="mt-6 rounded-xl border border-red-200 px-4 py-2 text-sm font-semibold text-red-600 hover:bg-red-50"
-        >
-          Delete {{ name_pascal }}
-        </button>
-      </div>
-    </AppLayout>
-  )
-}
+  <a href="/{{ module }}/{{ table }}/{{ "{{" }} item.id {{ "}}" }}" data-turbo-method="delete"
+     data-turbo-confirm="Delete this {{ name_pascal }}?"
+     class="mt-6 inline-block rounded-md border border-red-200 px-4 py-2 text-sm font-semibold text-red-600 hover:bg-red-50">Delete {{ name_pascal }}</a>
+</div>
+{{ "{%" }} endblock {{ "%}" }}
 "#;
 
 fn upsert_resource_permissions(lib_path: &Path, context: &ResourceContext) -> anyhow::Result<()> {
@@ -1556,201 +1491,6 @@ fn migration_sql(module: &str, table: &str, fields: &[Field]) -> String {
         "    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),\n    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()\n);\n",
     );
     sql
-}
-
-fn resource_index_page_tsx(module: &str, table: &str, pascal: &str, fields: &[Field]) -> String {
-    let mut columns = String::new();
-    let mut rows = String::new();
-    for field in fields {
-        columns.push_str(&format!(
-            "              <th className=\"px-4 py-2 text-left\">{}</th>\n",
-            to_title(&field.name)
-        ));
-        rows.push_str(&format!(
-            "                  <td className=\"px-4 py-2\">{{String(item['{}'] ?? '')}}</td>\n",
-            field.name
-        ));
-    }
-
-    format!(
-        r#"import type {{ FormEvent }} from 'react'
-import {{ Link, router }} from '@inertiajs/react'
-import AppLayout from '@app/layouts/AppLayout'
-
-interface Pagination {{
-  page: number
-  per_page: number
-  total: number
-  total_pages: number
-}}
-
-interface Props {{
-  items: Array<Record<string, unknown>>
-  pagination: Pagination
-  filters?: {{
-    q?: string
-  }}
-}}
-
-function pageHref(page: number, q?: string) {{
-  const params = new URLSearchParams()
-  if (q) params.set('q', q)
-  if (page > 1) params.set('page', String(page))
-  const query = params.toString()
-  return query ? `/{module}/{table}?${{query}}` : '/{module}/{table}'
-}}
-
-export default function {pascal}Index({{ items, pagination, filters = {{}} }}: Props) {{
-  const q = filters.q ?? ''
-  const canGoBack = pagination.page > 1
-  const canGoForward = pagination.page < pagination.total_pages
-
-  function submitSearch(event: FormEvent<HTMLFormElement>) {{
-    event.preventDefault()
-    const form = new FormData(event.currentTarget)
-    const q = String(form.get('q') ?? '').trim()
-    const data = q ? {{ q }} : {{}}
-    router.get('/{module}/{table}', data, {{ preserveState: true, replace: true }})
-  }}
-
-  return (
-    <AppLayout>
-      <div className="max-w-5xl">
-        <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">{table}</p>
-            <h1 className="mt-2 text-3xl font-bold text-gray-900">{pascal}</h1>
-          </div>
-          <Link
-            href="/{module}/{table}/create"
-            className="rounded-xl bg-slate-950 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
-          >
-            New {pascal}
-          </Link>
-        </div>
-
-        <form onSubmit={{submitSearch}} className="mb-4 flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:flex-row">
-          <input
-            name="q"
-            type="search"
-            defaultValue={{q}}
-            placeholder="Search {table}..."
-            className="min-w-0 flex-1 rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-950"
-          />
-          <div className="flex gap-2">
-            <button
-              type="submit"
-              className="rounded-xl bg-slate-950 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
-            >
-              Search
-            </button>
-            {{q ? (
-              <Link
-                href="/{module}/{table}"
-                className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-              >
-                Clear
-              </Link>
-            ) : null}}
-          </div>
-        </form>
-
-        <div className="overflow-hidden rounded-lg border bg-white">
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50">
-              <tr>
-{columns}                <th className="px-4 py-2 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {{items.length === 0 && (
-                <tr>
-                  <td className="px-4 py-6 text-gray-500" colSpan={{{fields_colspan}}}>
-                    No records yet.
-                  </td>
-                </tr>
-              )}}
-              {{items.map((item, index) => (
-                <tr key={{index}} className="border-t">
-{rows}                  <td className="px-4 py-2 text-right">
-                    {{item['id'] ? (
-                      <div className="flex justify-end gap-3">
-                      <Link
-                        href={{`/{module}/{table}/${{String(item['id'])}}`}}
-                        className="text-sm font-semibold text-slate-700 hover:text-slate-950"
-                      >
-                        View
-                      </Link>
-                      <Link
-                        href={{`/{module}/{table}/${{String(item['id'])}}/edit`}}
-                        className="text-sm font-semibold text-slate-700 hover:text-slate-950"
-                      >
-                        Edit
-                      </Link>
-                      <button
-                        type="button"
-                        onClick={{() => {{
-                          if (window.confirm('Delete this {pascal}?')) {{
-                            router.delete('/{module}/{table}/' + String(item['id']))
-                          }}
-                        }}}}
-                        className="text-sm font-semibold text-red-600 hover:text-red-700"
-                      >
-                        Delete
-                      </button>
-                      </div>
-                    ) : null}}
-                  </td>
-                </tr>
-              ))}}
-            </tbody>
-          </table>
-        </div>
-
-        <div className="mt-4 flex flex-col gap-3 text-sm text-slate-600 sm:flex-row sm:items-center sm:justify-between">
-          <p>
-            Showing {{items.length}} of {{pagination.total}} records
-          </p>
-          <div className="flex items-center gap-2">
-            {{canGoBack ? (
-              <Link
-                href={{pageHref(pagination.page - 1, q)}}
-                className="rounded-xl border border-slate-300 px-3 py-2 font-semibold text-slate-700 hover:bg-slate-50"
-              >
-                Previous
-              </Link>
-            ) : (
-              <span className="rounded-xl border border-slate-200 px-3 py-2 font-semibold text-slate-300">
-                Previous
-              </span>
-            )}}
-            <span>
-              Page {{pagination.page}} of {{pagination.total_pages}}
-            </span>
-            {{canGoForward ? (
-              <Link
-                href={{pageHref(pagination.page + 1, q)}}
-                className="rounded-xl border border-slate-300 px-3 py-2 font-semibold text-slate-700 hover:bg-slate-50"
-              >
-                Next
-              </Link>
-            ) : (
-              <span className="rounded-xl border border-slate-200 px-3 py-2 font-semibold text-slate-300">
-                Next
-              </span>
-            )}}
-          </div>
-        </div>
-      </div>
-    </AppLayout>
-  )
-}}
-"#,
-        fields_colspan = fields.len().max(1) + 1,
-        module = module,
-        table = table,
-        rows = rows,
-    )
 }
 
 fn upsert_models_mod(path: &Path, snake: &str, pascal: &str) -> anyhow::Result<()> {
@@ -2050,3 +1790,4 @@ fn to_title(value: &str) -> String {
         .collect::<Vec<_>>()
         .join(" ")
 }
+

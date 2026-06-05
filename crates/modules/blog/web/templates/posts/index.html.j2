@@ -1,0 +1,29 @@
+{% extends "layouts/app.html.j2" %}
+{% block title %}Posts{% endblock %}
+{% block content %}
+<div class="max-w-4xl">
+  <div class="flex justify-between items-center mb-8">
+    <h1 class="text-3xl font-bold">Posts</h1>
+    {% if auth and auth.user %}
+    <a href="/blog/posts/create" class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">New Post</a>
+    {% endif %}
+  </div>
+
+  {% if not (auth and auth.user) %}
+  <div class="mb-6 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+    Posts are public. <a href="/auth/login" class="font-semibold underline">Sign in</a> or
+    <a href="/auth/register" class="font-semibold underline">create an account</a> to create new posts.
+  </div>
+  {% endif %}
+
+  <div id="posts" class="space-y-4">
+    {% for post in posts %}{% include "blog/posts/_card.html.j2" %}{% endfor %}
+  </div>
+  {% if posts | length == 0 %}
+    <p class="text-gray-500">No posts yet. Sign in to create the first post.</p>
+  {% endif %}
+
+  {# Live updates: new posts are prepended via Turbo Stream over SSE. #}
+  <turbo-stream-source src="/blog/posts/stream"></turbo-stream-source>
+</div>
+{% endblock %}

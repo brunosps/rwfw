@@ -1,23 +1,23 @@
 use crate::repositories::post_repo::PostRepository;
 use crate::use_cases::update_post::{UpdatePostInput, UpdatePostUseCase};
-use axum::extract::Path;
-use axum::extract::{Json, State};
-use axum::response::{IntoResponse, Response};
+use axum::extract::{Form, Path, State};
+use axum::http::StatusCode;
+use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing;
 use rwfw_core::app::AppState;
 use rwfw_core::auth::CurrentUser;
 use rwfw_core::error::AppError;
-use rwfw_core::inertia::Inertia;
+use rwfw_core::view::View;
 
 pub fn route() -> axum::routing::MethodRouter<AppState> {
-    routing::get(get).put(put)
+    routing::get(get).post(put)
 }
 
-/// GET /blog/posts/{id}/edit - Edit post form
+/// GET /blog/posts/{id}/edit - Edit post form.
 async fn get(
     State(state): State<AppState>,
     user: CurrentUser,
-    i: Inertia,
+    v: View,
     Path(id): Path<i32>,
 ) -> Response {
     if !user.can("blog.posts.update") {
@@ -31,22 +31,16 @@ async fn get(
         Err(error) => return AppError::Internal(error).into_response(),
     };
 
-    i.render_with_ssr(
-        "blog/posts/Edit",
-        serde_json::json!({
-            "post": post
-        }),
-    )
-    .await
+    v.render("blog/posts/edit", serde_json::json!({ "post": post }))
 }
 
-/// PUT /blog/posts/{id}/edit - Update a post
+/// POST /blog/posts/{id}/edit - Update a post (HTML forms can't issue PUT).
 async fn put(
     State(state): State<AppState>,
     user: CurrentUser,
-    i: Inertia,
+    v: View,
     Path(id): Path<i32>,
-    Json(input): Json<UpdatePostInput>,
+    Form(input): Form<UpdatePostInput>,
 ) -> Response {
     if !user.can("blog.posts.update") {
         return AppError::Forbidden("Missing permission: blog.posts.update".into()).into_response();
@@ -55,9 +49,19 @@ async fn put(
     let repo = PostRepository::new(state.db.clone());
     let use_case = UpdatePostUseCase;
 
+    let title = input.title.clone();
+    let body = input.body.clone();
+
     match use_case.execute(&repo, id, input).await {
-        Ok(output) => Inertia::redirect(&format!("/blog/posts/{}", output.post.id)),
-        Err(AppError::Validation(errors)) => i.redirect_back_with_errors(errors),
+        Ok(output) => Redirect::to(&format!("/blog/posts/{}", output.post.id)).into_response(),
+        Err(AppError::Validation(errors)) => v.render_status(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "blog/posts/edit",
+            serde_json::json!({
+                "post": { "id": id, "title": title, "body": body },
+                "errors": rwfw_core::validation::first_messages(errors)
+            }),
+        ),
         Err(error) => error.into_response(),
     }
 }

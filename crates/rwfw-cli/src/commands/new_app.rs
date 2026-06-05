@@ -110,7 +110,7 @@ pub fn run(
         scaffold_route_index_template(),
     )?;
     write_file(
-        &app_dir.join(".rwfw/templates/page_index.tsx.tera"),
+        &app_dir.join(".rwfw/templates/page_index.html.j2.tera"),
         scaffold_page_index_template(),
     )?;
     write_file(
@@ -130,19 +130,19 @@ pub fn run(
         scaffold_use_case_delete_template(),
     )?;
     write_file(
-        &app_dir.join(".rwfw/templates/form.tsx.tera"),
+        &app_dir.join(".rwfw/templates/form.html.j2.tera"),
         scaffold_form_template(),
     )?;
     write_file(
-        &app_dir.join(".rwfw/templates/page_create.tsx.tera"),
+        &app_dir.join(".rwfw/templates/page_create.html.j2.tera"),
         scaffold_page_create_template(),
     )?;
     write_file(
-        &app_dir.join(".rwfw/templates/page_edit.tsx.tera"),
+        &app_dir.join(".rwfw/templates/page_edit.html.j2.tera"),
         scaffold_page_edit_template(),
     )?;
     write_file(
-        &app_dir.join(".rwfw/templates/page_show.tsx.tera"),
+        &app_dir.join(".rwfw/templates/page_show.html.j2.tera"),
         scaffold_page_show_template(),
     )?;
     write_file(
@@ -164,11 +164,6 @@ pub fn run(
     write_file(&app_dir.join("README.md"), readme_md(&context))?;
     write_file(&app_dir.join("rwfw.toml"), rwfw_toml(&context))?;
     write_file(&app_dir.join("Cargo.toml"), workspace_cargo_toml(&context))?;
-    write_file(&app_dir.join("package.json"), package_json(&context))?;
-    write_file(&app_dir.join("tsconfig.json"), tsconfig_json())?;
-    write_file(&app_dir.join("vite.config.ts"), vite_config_ts())?;
-    write_file(&app_dir.join("postcss.config.js"), postcss_config_js())?;
-    write_file(&app_dir.join("tailwind.config.ts"), tailwind_config_ts())?;
     write_file(
         &app_dir.join("config/development.yaml"),
         development_yaml(&context),
@@ -184,36 +179,49 @@ pub fn run(
         &app_dir.join("crates/app/src/main.rs"),
         app_main_rs(&context),
     )?;
-    write_file(&app_dir.join("crates/app/web/app.tsx"), app_tsx())?;
-    write_file(&app_dir.join("crates/app/web/ssr.tsx"), ssr_tsx())?;
-    write_file(&app_dir.join("crates/app/web/app.css"), app_css())?;
+    // App-level web assets: Hotwire templates, vendored JS (Turbo + Stimulus),
+    // compiled Tailwind CSS, and the `<x-...>` components used by the layouts.
     write_file(
-        &app_dir.join("crates/app/web/layouts/AppLayout.tsx"),
-        app_layout_tsx(&context),
+        &app_dir.join("crates/app/web/templates/layouts/base.html.j2"),
+        BASE_LAYOUT_TEMPLATE.to_string(),
     )?;
     write_file(
-        &app_dir.join("crates/app/web/layouts/AuthLayout.tsx"),
-        auth_layout_tsx(&context),
+        &app_dir.join("crates/app/web/templates/layouts/app.html.j2"),
+        APP_LAYOUT_TEMPLATE.to_string(),
     )?;
     write_file(
-        &app_dir.join("crates/app/web/components/FlashMessages.tsx"),
-        flash_messages_tsx(),
+        &app_dir.join("crates/app/web/templates/layouts/auth.html.j2"),
+        AUTH_LAYOUT_TEMPLATE.to_string(),
     )?;
     write_file(
-        &app_dir.join("crates/app/web/hooks/useAuth.ts"),
-        use_auth_ts(),
+        &app_dir.join("crates/app/web/templates/components/flash/index.html.j2"),
+        FLASH_COMPONENT_TEMPLATE.to_string(),
     )?;
     write_file(
-        &app_dir.join("crates/app/web/types/inertia.d.ts"),
-        inertia_types_ts(),
+        &app_dir.join("crates/app/web/templates/components/field/index.html.j2"),
+        FIELD_COMPONENT_TEMPLATE.to_string(),
     )?;
     write_file(
-        &app_dir.join("crates/modules/auth/web/pages/Login.tsx"),
-        auth_login_page_tsx(),
+        &app_dir.join("crates/app/web/templates/components_catalog.html.j2"),
+        COMPONENTS_CATALOG_TEMPLATE.to_string(),
+    )?;
+    write_file(&app_dir.join("crates/app/web/vendor.lock"), VENDOR_LOCK.to_string())?;
+    write_file(&app_dir.join("crates/app/web/assets/app.css"), APP_CSS.to_string())?;
+    write_binary_file(
+        &app_dir.join("crates/app/web/vendor/turbo.min.js"),
+        TURBO_JS,
+    )?;
+    write_binary_file(
+        &app_dir.join("crates/app/web/vendor/stimulus.min.js"),
+        STIMULUS_JS,
     )?;
     write_file(
-        &app_dir.join("crates/modules/auth/web/pages/Register.tsx"),
-        auth_register_page_tsx(),
+        &app_dir.join("crates/modules/auth/web/templates/login.html.j2"),
+        AUTH_LOGIN_TEMPLATE.to_string(),
+    )?;
+    write_file(
+        &app_dir.join("crates/modules/auth/web/templates/register.html.j2"),
+        AUTH_REGISTER_TEMPLATE.to_string(),
     )?;
 
     write_file(
@@ -233,8 +241,8 @@ pub fn run(
         home_index_route_rs(),
     )?;
     write_file(
-        &app_dir.join("crates/modules/home/web/pages/Index.tsx"),
-        home_index_page_tsx(&context),
+        &app_dir.join("crates/modules/home/web/templates/index.html.j2"),
+        home_index_page_template().to_string(),
     )?;
     match example {
         ExampleKind::Blog => write_blog_example(app_dir, &context)?,
@@ -249,7 +257,6 @@ pub fn run(
     println!("Next steps:");
     println!("  cd {app_name}");
     println!("  docker compose -f compose.dev.yaml up -d");
-    println!("  npm install");
     println!("  rwfw migrate");
     println!("  rwfw seed admin --email admin@example.com --password rwfw-admin-123");
     println!("  rwfw dev");
@@ -418,14 +425,15 @@ fn create_dirs(app_dir: &Path) -> anyhow::Result<()> {
         ".rwfw/templates",
         "docker",
         "crates/app/src",
-        "crates/app/web/components",
-        "crates/app/web/hooks",
-        "crates/app/web/layouts",
-        "crates/app/web/types",
+        "crates/app/web/templates/layouts",
+        "crates/app/web/templates/components/flash",
+        "crates/app/web/templates/components/field",
+        "crates/app/web/vendor",
+        "crates/app/web/assets",
         "crates/modules/home/src/migrations",
         "crates/modules/home/src/routes",
-        "crates/modules/home/web/pages",
-        "crates/modules/auth/web/pages",
+        "crates/modules/home/web/templates",
+        "crates/modules/auth/web/templates",
     ] {
         fs::create_dir_all(app_dir.join(dir))?;
     }
@@ -441,23 +449,22 @@ fn create_example_dirs(app_dir: &Path, example: ExampleKind) -> anyhow::Result<(
             "crates/modules/blog/src/use_cases",
             "crates/modules/blog/src/routes/posts/[slug]",
             "crates/modules/blog/src/routes/admin/posts/[id]",
-            "crates/modules/blog/web/pages/posts",
-            "crates/modules/blog/web/pages/admin/posts",
+            "crates/modules/blog/web/templates/posts",
+            "crates/modules/blog/web/templates/admin/posts",
         ],
         ExampleKind::Ecommerce => &[
             "crates/modules/shop/src/migrations",
             "crates/modules/shop/src/models",
             "crates/modules/shop/src/repositories",
             "crates/modules/shop/src/use_cases",
-            "crates/modules/shop/src/routes/products",
+            "crates/modules/shop/src/routes/products/[slug]",
             "crates/modules/shop/src/routes/cart",
             "crates/modules/shop/src/routes/checkout",
             "crates/modules/shop/src/routes/orders/[number]",
-            "crates/modules/shop/web/pages/products",
-            "crates/modules/shop/web/pages/cart",
-            "crates/modules/shop/web/pages/checkout",
-            "crates/modules/shop/web/pages/orders",
-            "crates/modules/shop/web/components",
+            "crates/modules/shop/web/templates/products",
+            "crates/modules/shop/web/templates/cart",
+            "crates/modules/shop/web/templates/checkout",
+            "crates/modules/shop/web/templates/orders",
         ],
     };
 
@@ -472,9 +479,49 @@ fn write_file(path: &Path, content: String) -> anyhow::Result<()> {
     if path.exists() {
         anyhow::bail!("File already exists: {}", path.display());
     }
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).with_context(|| format!("creating {}", parent.display()))?;
+    }
     fs::write(path, content).with_context(|| format!("writing {}", path.display()))?;
     Ok(())
 }
+
+fn write_binary_file(path: &Path, content: &[u8]) -> anyhow::Result<()> {
+    if path.exists() {
+        anyhow::bail!("File already exists: {}", path.display());
+    }
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).with_context(|| format!("creating {}", parent.display()))?;
+    }
+    fs::write(path, content).with_context(|| format!("writing {}", path.display()))?;
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Embedded npm-free frontend assets (mirrors the dogfood `rwfw-app/web/*`).
+// Baked into the CLI binary so generated apps need no npm/node and no network.
+// ---------------------------------------------------------------------------
+
+const TURBO_JS: &[u8] = include_bytes!("../../../rwfw-app/web/vendor/turbo.min.js");
+const STIMULUS_JS: &[u8] = include_bytes!("../../../rwfw-app/web/vendor/stimulus.min.js");
+const VENDOR_LOCK: &str = include_str!("../../../rwfw-app/web/vendor.lock");
+const APP_CSS: &str = include_str!("../../../rwfw-app/web/assets/app.css");
+const BASE_LAYOUT_TEMPLATE: &str =
+    include_str!("../../../rwfw-app/web/templates/layouts/base.html.j2");
+const APP_LAYOUT_TEMPLATE: &str =
+    include_str!("../../../rwfw-app/web/templates/layouts/app.html.j2");
+const AUTH_LAYOUT_TEMPLATE: &str =
+    include_str!("../../../rwfw-app/web/templates/layouts/auth.html.j2");
+const FLASH_COMPONENT_TEMPLATE: &str =
+    include_str!("../../../rwfw-app/web/templates/components/flash/index.html.j2");
+const FIELD_COMPONENT_TEMPLATE: &str =
+    include_str!("../../../rwfw-app/web/templates/components/field/index.html.j2");
+const COMPONENTS_CATALOG_TEMPLATE: &str =
+    include_str!("../../../rwfw-app/web/templates/components_catalog.html.j2");
+const AUTH_LOGIN_TEMPLATE: &str =
+    include_str!("../../../modules/auth/web/templates/login.html.j2");
+const AUTH_REGISTER_TEMPLATE: &str =
+    include_str!("../../../modules/auth/web/templates/register.html.j2");
 
 fn path_for_toml(path: &Path) -> String {
     path.to_string_lossy().replace('\\', "/")
@@ -500,8 +547,6 @@ fn path_for_yaml(path: &Path) -> String {
 
 fn gitignore() -> String {
     r#"/target
-/node_modules
-/dist
 .env
 .DS_Store
 "#
@@ -510,8 +555,6 @@ fn gitignore() -> String {
 
 fn dockerignore() -> String {
     r#"/target
-/node_modules
-/dist
 /.git
 /.env
 *.log
@@ -540,19 +583,11 @@ fn dockerfile(context: &AppTemplateContext) -> String {
 ARG APP_PACKAGE={}
 ARG RWFW_FRAMEWORK_PATH=/opt/rwfw
 
-FROM node:22-bookworm AS web-builder
-WORKDIR /app
-COPY package*.json ./
-RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
-COPY . .
-RUN npm run build && npm run build:ssr
-
 FROM rust:1-bookworm AS rust-builder
 ARG APP_PACKAGE
 ARG RWFW_FRAMEWORK_PATH
 WORKDIR /app
 {framework_copy}COPY . .
-COPY --from=web-builder /app/dist ./dist
 RUN cargo build --release -p "${{APP_PACKAGE}}"
 
 FROM debian:bookworm-slim AS runtime
@@ -560,15 +595,15 @@ ARG APP_PACKAGE
 ENV APP_PACKAGE=${{APP_PACKAGE}}
 ENV RWFW_ENV=production
 ENV RWFW_RUN_MIGRATIONS=1
-ENV RWFW_VITE_ENTRY=crates/app/web/app.tsx
-ENV RWFW_VITE_MANIFEST=dist/client/.vite/manifest.json
 WORKDIR /app
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates libssl3 libstdc++6 \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=rust-builder /app/target/release/${{APP_PACKAGE}} /usr/local/bin/rwfw-app
 COPY --from=rust-builder /app/config ./config
-COPY --from=rust-builder /app/dist ./dist
+# Web assets (Hotwire templates, vendored JS, compiled CSS) are loaded from disk
+# at each crate's compile-time path, so the source web dirs are copied in.
+COPY --from=rust-builder /app/crates ./crates
 COPY docker/entrypoint.sh /usr/local/bin/rwfw-entrypoint
 RUN chmod +x /usr/local/bin/rwfw-entrypoint
 EXPOSE 8080
@@ -696,7 +731,7 @@ fn readme_md(context: &AppTemplateContext) -> String {
     format!(
         r#"# {title}
 
-Generated by RWFW. This project is a runnable example application and a starting point for building modular Rust web apps with Axum, SeaORM, Inertia, React, Vite, SSR, and PostgreSQL.
+Generated by RWFW. This project is a runnable example application and a starting point for building modular Rust web apps with Axum, SeaORM, Hotwire (Turbo + Stimulus), MiniJinja templates, and PostgreSQL — with zero npm/node.
 
 Example selected: `{example}` ({example_title}).
 
@@ -708,25 +743,23 @@ Example selected: `{example}` ({example_title}).
 
 - `rwfw.toml`: RWFW project metadata used by the CLI to find the app crate and modules directory.
 - `Cargo.toml`: Rust workspace with the app crate and local modules.
-- `package.json`: frontend scripts and React/Vite dependencies.
 - `.env.example`: local environment variables for generated integrations such as SSO providers.
 - `config/development.yaml`: local runtime config used by `rwfw dev`.
 - `config/production.yaml`: production runtime config used by the Docker image.
 - `compose.dev.yaml`: local development services: PostgreSQL and pgAdmin.
 - `compose.yaml`: production-style Docker stack: PostgreSQL plus the compiled app container.
-- `Dockerfile.prod`: multi-stage production image that builds frontend assets, SSR bundle, and the Rust binary.
+- `Dockerfile.prod`: single-stage Rust production image (no node); web assets are loaded from disk.
 - `docker/entrypoint.sh`: production container entrypoint; optionally runs migrations before starting the app.
 - `.rwfw/templates`: project-local code generation templates used by `rwfw generate`.
-- `crates/app`: application composition crate. It wires modules, SSR, config, and migrations into one binary.
+- `crates/app`: application composition crate. It wires modules, config, and migrations into one binary, and owns the shared `web/` (Hotwire layouts, vendored Turbo/Stimulus, `assets/app.css`).
 - `crates/modules/home`: minimal example module with one page.
 - `crates/modules/{example_module}`: generated `{example}` example module.
-- `crates/modules/auth`: frontend auth pages for the framework auth module.
+- `crates/modules/auth`: server-rendered auth pages for the framework auth module.
 
 ## Local Development
 
 ```bash
 docker compose -f compose.dev.yaml up -d
-npm install
 rwfw migrate
 rwfw seed admin --email admin@example.com --password rwfw-admin-123
 rwfw dev
@@ -816,7 +849,7 @@ rwfw generate scaffold Product --module admin name:string description:text activ
 Supported field types: `string`, `text`, `int`, `integer`, `decimal`, `float`, `bool`, `boolean`, `uuid`, `date`, `datetime`, and `timestamp`.
 Append `?` to the field name or type for nullable columns, for example `summary?:text` or `published_at:datetime?`.
 
-The scaffold creates a SeaORM model, one SQL migration file, repository/use-case files, protected CRUD routes, searchable/paginated index pages, flash confirmations, and reusable React index/show/form/create/edit pages.
+The scaffold creates a SeaORM model, one SQL migration file, repository/use-case files, protected CRUD routes, searchable/paginated index pages, flash confirmations, and reusable MiniJinja index/show/form/create/edit templates.
 
 ## Scaffold Templates
 
@@ -828,15 +861,15 @@ The generator reads templates from `.rwfw/templates` before using built-in defau
 - `use_case_create.rs.tera`: create input, validation, and use-case.
 - `use_case_update.rs.tera`: update input, validation, and use-case.
 - `use_case_delete.rs.tera`: delete use-case.
-- `route_index.rs.tera`: Axum/Inertia route.
+- `route_index.rs.tera`: Axum route using the `View` engine.
 - `route_create.rs.tera`: protected create page route.
 - `route_edit.rs.tera`: protected edit/update route.
 - `route_item.rs.tera`: protected show and item actions, including delete.
-- `page_index.tsx.tera`: React page.
-- `form.tsx.tera`: reusable form component.
-- `page_create.tsx.tera`: React create page.
-- `page_edit.tsx.tera`: React edit page.
-- `page_show.tsx.tera`: React show page.
+- `page_index.html.j2.tera`: MiniJinja index page.
+- `form.html.j2.tera`: reusable MiniJinja form partial.
+- `page_create.html.j2.tera`: MiniJinja create page.
+- `page_edit.html.j2.tera`: MiniJinja edit page.
+- `page_show.html.j2.tera`: MiniJinja show page.
 
 Template context:
 
@@ -888,10 +921,10 @@ fn readme_example_routes(example: ExampleKind) -> &'static str {
 - `/auth/register` creates a user and signs in. The first user becomes admin."#
         }
         ExampleKind::Ecommerce => {
-            r#"- `/shop` is the storefront.
-- `/shop/products/:slug` shows a product detail page.
-- `/shop/cart` is the local cart page.
-- `/shop/checkout` posts a fake checkout to the backend.
+            r#"- `/shop` is the storefront with category and search filters.
+- `/shop/products/:slug` shows a product detail page with an add-to-cart form.
+- `/shop/cart` is the server-rendered cart (backed by a cookie, no client JS state).
+- `/shop/checkout` renders the checkout form and posts a fake checkout to the backend.
 - `/shop/orders/:number` shows the persisted order confirmation.
 - `/auth/register` is included so you can test protected framework routes later, but storefront browsing and checkout are public in this example."#
         }
@@ -946,322 +979,6 @@ uuid = { version = "1", features = ["v4", "serde"] }
     .replace("__EXAMPLE_MODULE__", context.example.module_name())
 }
 
-fn package_json(context: &AppTemplateContext) -> String {
-    format!(
-        r#"{{
-  "name": "{}",
-  "private": true,
-  "type": "module",
-  "scripts": {{
-    "dev": "vite",
-    "build": "vite build",
-    "build:ssr": "vite build --mode ssr",
-    "preview": "vite preview"
-  }},
-  "dependencies": {{
-    "@inertiajs/react": "^2.0.0",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0"
-  }},
-  "devDependencies": {{
-    "@types/react": "^19.0.0",
-    "@types/react-dom": "^19.0.0",
-    "@vitejs/plugin-react": "^4.3.0",
-    "autoprefixer": "^10.4.0",
-    "postcss": "^8.4.0",
-    "tailwindcss": "^3.4.0",
-    "typescript": "^5.6.0",
-    "vite": "^6.0.0"
-  }}
-}}
-"#,
-        context.app_name
-    )
-}
-
-fn tsconfig_json() -> String {
-    r#"{
-  "compilerOptions": {
-    "target": "ES2022",
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
-    "module": "ESNext",
-    "moduleResolution": "bundler",
-    "jsx": "react-jsx",
-    "strict": true,
-    "esModuleInterop": true,
-    "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true,
-    "resolveJsonModule": true,
-    "isolatedModules": true,
-    "noEmit": true,
-    "paths": {
-      "@app/*": ["./crates/app/web/*"],
-      "@modules/*": ["./crates/modules/*"]
-    },
-    "baseUrl": "."
-  },
-  "include": [
-    "crates/app/web/**/*.ts",
-    "crates/app/web/**/*.tsx",
-    "crates/modules/*/web/**/*.ts",
-    "crates/modules/*/web/**/*.tsx"
-  ]
-}
-"#
-    .to_string()
-}
-
-fn vite_config_ts() -> String {
-    r#"import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
-
-const ssrPolyfills = `
-(function () {
-  const global = globalThis;
-
-  if (typeof global.console === 'undefined') {
-    global.console = { log() {}, info() {}, warn() {}, error() {}, debug() {} };
-  }
-
-  if (typeof global.performance === 'undefined') {
-    global.performance = { now: () => Date.now() };
-  }
-
-  if (typeof global.queueMicrotask === 'undefined') {
-    global.queueMicrotask = (callback) => Promise.resolve().then(callback);
-  }
-
-  if (typeof global.setTimeout === 'undefined') {
-    global.setTimeout = (callback) => {
-      global.queueMicrotask(callback);
-      return 0;
-    };
-  }
-
-  if (typeof global.clearTimeout === 'undefined') {
-    global.clearTimeout = () => {};
-  }
-
-  if (typeof global.FormData === 'undefined') {
-    global.FormData = class FormData {
-      constructor() {
-        this._entries = [];
-      }
-
-      append(name, value) {
-        this._entries.push([name, value]);
-      }
-
-      forEach(callback) {
-        this._entries.forEach(([name, value]) => callback(value, name, this));
-      }
-    };
-  }
-
-  if (typeof global.URLSearchParams === 'undefined') {
-    global.URLSearchParams = class URLSearchParams {
-      constructor(init = '') {
-        this._params = [];
-        const query = String(init).replace(/^\\?/, '');
-
-        if (query) {
-          query.split('&').forEach((part) => {
-            if (!part) return;
-            const [name, value = ''] = part.split('=');
-            this.append(decodeURIComponent(name), decodeURIComponent(value));
-          });
-        }
-      }
-
-      append(name, value) {
-        this._params.push([String(name), String(value)]);
-      }
-
-      set(name, value) {
-        this.delete(name);
-        this.append(name, value);
-      }
-
-      delete(name) {
-        this._params = this._params.filter(([key]) => key !== String(name));
-      }
-
-      toString() {
-        return this._params
-          .map(([name, value]) => encodeURIComponent(name) + '=' + encodeURIComponent(value))
-          .join('&');
-      }
-    };
-  }
-
-  if (typeof global.URL === 'undefined') {
-    global.URL = class URL {
-      constructor(input) {
-        const raw = String(input || '/');
-        const hashIndex = raw.indexOf('#');
-        const withoutHash = hashIndex >= 0 ? raw.slice(0, hashIndex) : raw;
-
-        this.hash = hashIndex >= 0 ? raw.slice(hashIndex) : '';
-
-        const queryIndex = withoutHash.indexOf('?');
-        this.pathname = queryIndex >= 0 ? withoutHash.slice(0, queryIndex) || '/' : withoutHash || '/';
-        this.searchParams = new global.URLSearchParams(queryIndex >= 0 ? withoutHash.slice(queryIndex) : '');
-      }
-
-      get search() {
-        const query = this.searchParams.toString();
-        return query ? '?' + query : '';
-      }
-
-      set search(value) {
-        this.searchParams = new global.URLSearchParams(value);
-      }
-
-      get href() {
-        return this.pathname + this.search + this.hash;
-      }
-
-      toString() {
-        return this.href;
-      }
-    };
-  }
-
-  if (typeof global.MessageChannel === 'undefined') {
-    global.MessageChannel = class MessageChannel {
-      constructor() {
-        const port1 = { onmessage: null };
-        const port2 = {
-          postMessage(data) {
-            global.queueMicrotask(() => {
-              if (typeof port1.onmessage === 'function') {
-                port1.onmessage({ data });
-              }
-            });
-          },
-        };
-
-        this.port1 = port1;
-        this.port2 = port2;
-      }
-    };
-  }
-
-  if (typeof global.TextEncoder === 'undefined') {
-    global.TextEncoder = class TextEncoder {
-      encode(input = '') {
-        const text = String(input);
-        const bytes = [];
-
-        for (let index = 0; index < text.length; index += 1) {
-          let codePoint = text.charCodeAt(index);
-
-          if (codePoint >= 0xd800 && codePoint <= 0xdbff && index + 1 < text.length) {
-            const next = text.charCodeAt(index + 1);
-            if (next >= 0xdc00 && next <= 0xdfff) {
-              codePoint = 0x10000 + ((codePoint - 0xd800) << 10) + (next - 0xdc00);
-              index += 1;
-            }
-          }
-
-          if (codePoint <= 0x7f) {
-            bytes.push(codePoint);
-          } else if (codePoint <= 0x7ff) {
-            bytes.push(0xc0 | (codePoint >> 6), 0x80 | (codePoint & 0x3f));
-          } else if (codePoint <= 0xffff) {
-            bytes.push(0xe0 | (codePoint >> 12), 0x80 | ((codePoint >> 6) & 0x3f), 0x80 | (codePoint & 0x3f));
-          } else {
-            bytes.push(
-              0xf0 | (codePoint >> 18),
-              0x80 | ((codePoint >> 12) & 0x3f),
-              0x80 | ((codePoint >> 6) & 0x3f),
-              0x80 | (codePoint & 0x3f),
-            );
-          }
-        }
-
-        return new Uint8Array(bytes);
-      }
-    };
-  }
-})();
-`;
-
-export default defineConfig(({ mode }) => {
-  const isSsrBuild = mode === 'ssr'
-  const devServerPort = Number(process.env.RWFW_VITE_PORT ?? '5173')
-
-  return {
-    plugins: [react()],
-    root: '.',
-    define: {
-      'process.env.NODE_ENV': JSON.stringify('production'),
-    },
-    build: {
-      outDir: isSsrBuild ? 'dist/server' : 'dist/client',
-      manifest: !isSsrBuild,
-      lib: isSsrBuild
-        ? {
-            entry: 'crates/app/web/ssr.tsx',
-            formats: ['iife'],
-            name: 'RWFWSSR',
-            fileName: () => 'ssr.js',
-          }
-        : undefined,
-      rollupOptions: isSsrBuild
-        ? {
-            output: {
-              banner: ssrPolyfills,
-            },
-          }
-        : {
-            input: 'crates/app/web/app.tsx',
-          },
-    },
-    server: {
-      port: devServerPort,
-      strictPort: true,
-    },
-    resolve: {
-      alias: {
-        '@app': '/crates/app/web',
-        '@modules': '/crates/modules',
-      },
-    },
-  }
-})
-"#
-    .to_string()
-}
-
-fn postcss_config_js() -> String {
-    r#"export default {
-  plugins: {
-    tailwindcss: {},
-    autoprefixer: {},
-  },
-}
-"#
-    .to_string()
-}
-
-fn tailwind_config_ts() -> String {
-    r#"import type { Config } from 'tailwindcss'
-
-export default {
-  content: [
-    'crates/app/web/**/*.tsx',
-    'crates/modules/*/web/**/*.tsx',
-  ],
-  theme: {
-    extend: {},
-  },
-  plugins: [],
-} satisfies Config
-"#
-    .to_string()
-}
-
 fn development_yaml(context: &AppTemplateContext) -> String {
     format!(
         r#"database:
@@ -1274,11 +991,6 @@ server:
 logging:
   level: "debug"
   format: "pretty"
-
-vite:
-  dev_server: "http://localhost:5173"
-  manifest_path: "dist/client/.vite/manifest.json"
-  ssr_bundle_path: "dist/server/ssr.js"
 
 auth:
   session_ttl: 86400
@@ -1301,11 +1013,6 @@ server:
 logging:
   level: "info"
   format: "json"
-
-vite:
-  dev_server: null
-  manifest_path: "dist/client/.vite/manifest.json"
-  ssr_bundle_path: "dist/server/ssr.js"
 
 auth:
   session_ttl: 86400
@@ -1440,32 +1147,32 @@ fn write_blog_example(app_dir: &Path, context: &AppTemplateContext) -> anyhow::R
         blog_admin_post_edit_route_rs(),
     )?;
     write_file(
-        &app_dir.join("crates/modules/blog/web/pages/Index.tsx"),
-        blog_index_page_tsx(),
+        &app_dir.join("crates/modules/blog/web/templates/index.html.j2"),
+        blog_index_page_template(),
     )?;
     write_file(
-        &app_dir.join("crates/modules/blog/web/pages/posts/Index.tsx"),
-        blog_posts_index_page_tsx(),
+        &app_dir.join("crates/modules/blog/web/templates/posts/index.html.j2"),
+        blog_posts_index_page_template(),
     )?;
     write_file(
-        &app_dir.join("crates/modules/blog/web/pages/posts/Show.tsx"),
-        blog_post_show_page_tsx(),
+        &app_dir.join("crates/modules/blog/web/templates/posts/show.html.j2"),
+        blog_post_show_page_template(),
     )?;
     write_file(
-        &app_dir.join("crates/modules/blog/web/pages/admin/posts/Index.tsx"),
-        blog_admin_posts_index_page_tsx(),
+        &app_dir.join("crates/modules/blog/web/templates/admin/posts/index.html.j2"),
+        blog_admin_posts_index_page_template(),
     )?;
     write_file(
-        &app_dir.join("crates/modules/blog/web/pages/admin/posts/Form.tsx"),
-        blog_admin_post_form_tsx(),
+        &app_dir.join("crates/modules/blog/web/templates/admin/posts/_form.html.j2"),
+        blog_admin_post_form_template(),
     )?;
     write_file(
-        &app_dir.join("crates/modules/blog/web/pages/admin/posts/New.tsx"),
-        blog_admin_post_new_page_tsx(),
+        &app_dir.join("crates/modules/blog/web/templates/admin/posts/new.html.j2"),
+        blog_admin_post_new_page_template(),
     )?;
     write_file(
-        &app_dir.join("crates/modules/blog/web/pages/admin/posts/Edit.tsx"),
-        blog_admin_post_edit_page_tsx(),
+        &app_dir.join("crates/modules/blog/web/templates/admin/posts/edit.html.j2"),
+        blog_admin_post_edit_page_template(),
     )?;
 
     Ok(())
@@ -1519,9 +1226,8 @@ pub fn registered_modules() -> Vec<Box<dyn Module>> {
 }
 
 pub async fn build_router(config: AppConfig) -> anyhow::Result<Router> {
-    init_ssr_if_available(&config);
-
-    let mut app_builder = rwfw_core::app::RwfwApp::new(config);
+    let mut app_builder = rwfw_core::app::RwfwApp::new(config)
+        .web_root(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("web"));
 
     for module in registered_modules() {
         app_builder = app_builder.module(module);
@@ -1543,29 +1249,6 @@ pub async fn run_migrations(
     let db = rwfw_core::db::connect(config).await?;
     let modules = registered_modules();
     rwfw_core::migration::run_pending_migrations(&db, &modules).await
-}
-
-fn init_ssr_if_available(config: &AppConfig) {
-    if config.is_development() {
-        return;
-    }
-
-    let ssr_bundle_path = config
-        .vite()
-        .ok()
-        .and_then(|vite| vite.ssr_bundle_path)
-        .unwrap_or_else(|| "dist/server/ssr.js".to_string());
-
-    match std::fs::read_to_string(&ssr_bundle_path) {
-        Ok(bundle) => rwfw_core::ssr::init(&bundle),
-        Err(error) => {
-            tracing::warn!(
-                path = %ssr_bundle_path,
-                error = %error,
-                "SSR bundle not available; falling back to CSR shell"
-            );
-        }
-    }
 }
 "#
     .replace(
@@ -1652,509 +1335,6 @@ async fn run_rwfw_command(command: Option<&str>, config: &AppConfig) -> anyhow::
 "#
 }
 
-fn app_tsx() -> String {
-    r#"import { createInertiaApp } from '@inertiajs/react'
-import type { ComponentType } from 'react'
-import { createRoot, hydrateRoot } from 'react-dom/client'
-import './app.css'
-
-createInertiaApp({
-  resolve: (name) => {
-    const pages = import.meta.glob<{ default: ComponentType<any> }>(
-      '../../modules/*/web/pages/**/*.tsx',
-      { eager: false }
-    )
-
-    const [module, ...rest] = name.split('/')
-    const page = rest.join('/')
-    const key = `../../modules/${module}/web/pages/${page}.tsx`
-
-    if (!pages[key]) {
-      throw new Error(`Page not found: ${name} (looked for ${key})`)
-    }
-
-    return pages[key]()
-  },
-  setup({ el, App, props }) {
-    if (el.innerHTML) {
-      hydrateRoot(el, <App {...props} />)
-    } else {
-      createRoot(el!).render(<App {...props} />)
-    }
-  },
-})
-"#
-    .to_string()
-}
-
-fn ssr_tsx() -> String {
-    r#"import { createInertiaApp } from '@inertiajs/react'
-import type { ComponentType } from 'react'
-import { renderToString } from 'react-dom/server.browser'
-
-export async function render(pageJson: string): Promise<string> {
-  const page = JSON.parse(pageJson)
-  let html = ''
-
-  await createInertiaApp({
-    page,
-    resolve: (name) => {
-      const pages = import.meta.glob<{ default: ComponentType<any> }>(
-        '../../modules/*/web/pages/**/*.tsx',
-        { eager: true }
-      )
-
-      const [module, ...rest] = name.split('/')
-      const pagePath = rest.join('/')
-      const key = `../../modules/${module}/web/pages/${pagePath}.tsx`
-
-      if (!pages[key]) {
-        throw new Error(`SSR: Page not found: ${name} (looked for ${key})`)
-      }
-
-      return pages[key]
-    },
-    setup({ App, props }) {
-      html = renderToString(<App {...props} />)
-      return <App {...props} />
-    },
-  })
-
-  return html
-}
-"#
-    .to_string()
-}
-
-fn app_css() -> String {
-    r#"@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
-body {
-  @apply bg-slate-50 text-slate-950 antialiased;
-}
-"#
-    .to_string()
-}
-
-fn app_layout_tsx(context: &AppTemplateContext) -> String {
-    app_layout_template().replace("__APP_TITLE__", &context.app_title)
-}
-
-fn app_layout_template() -> &'static str {
-    r#"import React from 'react'
-import { Link, usePage } from '@inertiajs/react'
-import FlashMessages from '@app/components/FlashMessages'
-
-interface NavItem {
-  label: string
-  href: string
-  icon?: string
-}
-
-interface ModuleNav {
-  name: string
-  nav_items: NavItem[]
-}
-
-interface SharedData {
-  auth?: { user: { name: string; email: string } }
-  modules?: ModuleNav[]
-}
-
-export default function AppLayout({ children }: { children: React.ReactNode }) {
-  const { props } = usePage<SharedData & Record<string, unknown>>()
-  const { auth, modules = [] } = props as SharedData
-
-  return (
-    <div className="min-h-screen bg-slate-50">
-      <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
-          <div>
-            <h1 className="text-lg font-semibold text-slate-950">__APP_TITLE__</h1>
-            <p className="text-sm text-slate-500">RWFW application</p>
-          </div>
-          {auth?.user && (
-            <div className="text-right">
-              <p className="text-sm font-medium text-slate-800">{auth.user.name}</p>
-              <p className="text-xs text-slate-500">{auth.user.email}</p>
-            </div>
-          )}
-        </div>
-      </header>
-
-      <div className="mx-auto grid max-w-6xl grid-cols-1 gap-8 px-6 py-8 md:grid-cols-[220px_1fr]">
-        <aside>
-          <nav className="space-y-1">
-            {modules.map((mod) => (
-              <div key={mod.name}>
-                {mod.nav_items.map((item) => (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    className="block rounded-lg px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-200"
-                  >
-                    {item.label}
-                  </Link>
-                ))}
-              </div>
-            ))}
-          </nav>
-        </aside>
-
-        <main>
-          <FlashMessages />
-          {children}
-        </main>
-      </div>
-    </div>
-  )
-}
-"#
-}
-
-fn auth_layout_tsx(context: &AppTemplateContext) -> String {
-    auth_layout_template().replace("__APP_TITLE__", &context.app_title)
-}
-
-fn auth_layout_template() -> &'static str {
-    r#"import React from 'react'
-import { Link } from '@inertiajs/react'
-
-export default function AuthLayout({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="min-h-screen bg-slate-950 px-6 py-10 text-slate-950">
-      <div className="mx-auto grid min-h-[calc(100vh-5rem)] max-w-6xl overflow-hidden rounded-[2rem] bg-white shadow-2xl lg:grid-cols-[1fr_440px]">
-        <section className="hidden bg-[radial-gradient(circle_at_20%_20%,#fbbf24,transparent_28%),linear-gradient(135deg,#0f172a,#1e293b_55%,#334155)] p-10 text-white lg:flex lg:flex-col lg:justify-between">
-          <div>
-            <Link href="/home" className="text-sm font-semibold uppercase tracking-[0.3em] text-amber-200">
-              __APP_TITLE__
-            </Link>
-            <h1 className="mt-16 max-w-lg text-5xl font-bold leading-tight">
-              Auth, sessions, migrations and modules in one Rust app.
-            </h1>
-          </div>
-          <p className="max-w-md text-sm leading-6 text-slate-300">
-            This example protects write actions while keeping public pages readable.
-          </p>
-        </section>
-
-        <main className="flex items-center justify-center p-6 sm:p-10">
-          <div className="w-full max-w-md">{children}</div>
-        </main>
-      </div>
-    </div>
-  )
-}
-"#
-}
-
-fn auth_login_page_tsx() -> String {
-    r#"import { Link, useForm, usePage } from '@inertiajs/react'
-import AuthLayout from '@app/layouts/AuthLayout'
-
-type SsoProvider = {
-  name: string
-  displayName: string
-  loginUrl: string
-}
-
-export default function Login() {
-  const { props } = usePage()
-  const ssoProviders = ((props as any).ssoProviders ?? []) as SsoProvider[]
-  const { data, setData, post, processing, errors } = useForm({
-    email: '',
-    password: '',
-  })
-
-  function submit(event: React.FormEvent) {
-    event.preventDefault()
-    post('/auth/login')
-  }
-
-  return (
-    <AuthLayout>
-      <div className="mb-8">
-        <p className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">Private routes</p>
-        <h2 className="mt-3 text-3xl font-bold tracking-tight text-slate-950">Sign in</h2>
-        <p className="mt-2 text-sm leading-6 text-slate-600">
-          Sign in to create blog posts. Reading posts stays public.
-        </p>
-      </div>
-
-      {ssoProviders.length > 0 && (
-        <div className="mb-6 space-y-3">
-          {ssoProviders.map((provider) => (
-            <a
-              key={provider.name}
-              href={provider.loginUrl}
-              className="block w-full rounded-xl border border-slate-300 px-4 py-3 text-center text-sm font-semibold text-slate-900 hover:bg-slate-50"
-            >
-              Continue with {provider.displayName}
-            </a>
-          ))}
-          <div className="relative py-2">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-slate-200" />
-            </div>
-            <div className="relative flex justify-center text-xs uppercase tracking-[0.16em]">
-              <span className="bg-white px-3 text-slate-500">or sign in locally</span>
-            </div>
-          </div>
-        </div>
-      )}
-
-      <form onSubmit={submit} className="space-y-5">
-        <div>
-          <label htmlFor="email" className="mb-1 block text-sm font-medium text-slate-700">
-            Email
-          </label>
-          <input
-            id="email"
-            type="email"
-            value={data.email}
-            onChange={(event) => setData('email', event.target.value)}
-            className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-950"
-            required
-          />
-          {errors.email && <p className="mt-1 text-sm text-red-600">{errors.email}</p>}
-        </div>
-
-        <div>
-          <label htmlFor="password" className="mb-1 block text-sm font-medium text-slate-700">
-            Password
-          </label>
-          <input
-            id="password"
-            type="password"
-            value={data.password}
-            onChange={(event) => setData('password', event.target.value)}
-            className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-950"
-            required
-          />
-          {errors.password && <p className="mt-1 text-sm text-red-600">{errors.password}</p>}
-        </div>
-
-        <button
-          type="submit"
-          disabled={processing}
-          className="w-full rounded-xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
-        >
-          {processing ? 'Signing in...' : 'Sign in'}
-        </button>
-      </form>
-
-      <p className="mt-6 text-center text-sm text-slate-600">
-        No account yet?{' '}
-        <Link href="/auth/register" className="font-semibold text-slate-950 hover:underline">
-          Create one
-        </Link>
-      </p>
-    </AuthLayout>
-  )
-}
-"#
-    .to_string()
-}
-
-fn auth_register_page_tsx() -> String {
-    r#"import { Link, useForm } from '@inertiajs/react'
-import AuthLayout from '@app/layouts/AuthLayout'
-
-export default function Register() {
-  const { data, setData, post, processing, errors } = useForm({
-    name: '',
-    email: '',
-    password: '',
-    password_confirmation: '',
-  })
-
-  function submit(event: React.FormEvent) {
-    event.preventDefault()
-    post('/auth/register')
-  }
-
-  return (
-    <AuthLayout>
-      <div className="mb-8">
-        <p className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">Example user</p>
-        <h2 className="mt-3 text-3xl font-bold tracking-tight text-slate-950">Create account</h2>
-        <p className="mt-2 text-sm leading-6 text-slate-600">
-          The first registered user is assigned the admin role by the auth module.
-        </p>
-      </div>
-
-      <form onSubmit={submit} className="space-y-5">
-        <div>
-          <label htmlFor="name" className="mb-1 block text-sm font-medium text-slate-700">
-            Name
-          </label>
-          <input
-            id="name"
-            value={data.name}
-            onChange={(event) => setData('name', event.target.value)}
-            className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-950"
-            required
-          />
-          {errors.name && <p className="mt-1 text-sm text-red-600">{errors.name}</p>}
-        </div>
-
-        <div>
-          <label htmlFor="email" className="mb-1 block text-sm font-medium text-slate-700">
-            Email
-          </label>
-          <input
-            id="email"
-            type="email"
-            value={data.email}
-            onChange={(event) => setData('email', event.target.value)}
-            className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-950"
-            required
-          />
-          {errors.email && <p className="mt-1 text-sm text-red-600">{errors.email}</p>}
-        </div>
-
-        <div>
-          <label htmlFor="password" className="mb-1 block text-sm font-medium text-slate-700">
-            Password
-          </label>
-          <input
-            id="password"
-            type="password"
-            value={data.password}
-            onChange={(event) => setData('password', event.target.value)}
-            className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-950"
-            required
-          />
-          {errors.password && <p className="mt-1 text-sm text-red-600">{errors.password}</p>}
-        </div>
-
-        <div>
-          <label htmlFor="password_confirmation" className="mb-1 block text-sm font-medium text-slate-700">
-            Confirm password
-          </label>
-          <input
-            id="password_confirmation"
-            type="password"
-            value={data.password_confirmation}
-            onChange={(event) => setData('password_confirmation', event.target.value)}
-            className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-950"
-            required
-          />
-        </div>
-
-        <button
-          type="submit"
-          disabled={processing}
-          className="w-full rounded-xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
-        >
-          {processing ? 'Creating...' : 'Create account'}
-        </button>
-      </form>
-
-      <p className="mt-6 text-center text-sm text-slate-600">
-        Already registered?{' '}
-        <Link href="/auth/login" className="font-semibold text-slate-950 hover:underline">
-          Sign in
-        </Link>
-      </p>
-    </AuthLayout>
-  )
-}
-"#
-    .to_string()
-}
-
-fn flash_messages_tsx() -> String {
-    r#"import { usePage } from '@inertiajs/react'
-
-export default function FlashMessages() {
-  const { props } = usePage()
-  const flash = (props as any).flash
-
-  if (!flash) return null
-
-  return (
-    <div className="mb-6 space-y-2">
-      {flash.success && (
-        <div className="rounded-lg bg-emerald-100 p-4 text-sm text-emerald-800">
-          {flash.success}
-        </div>
-      )}
-      {flash.error && (
-        <div className="rounded-lg bg-red-100 p-4 text-sm text-red-800">
-          {flash.error}
-        </div>
-      )}
-      {flash.info && (
-        <div className="rounded-lg bg-sky-100 p-4 text-sm text-sky-800">
-          {flash.info}
-        </div>
-      )}
-    </div>
-  )
-}
-"#
-    .to_string()
-}
-
-fn use_auth_ts() -> String {
-    r#"import { usePage } from '@inertiajs/react'
-
-export function useAuth() {
-  const { props } = usePage()
-  const auth = (props as any).auth
-
-  return {
-    user: auth?.user ?? null,
-    roles: auth?.roles ?? [],
-    permissions: auth?.permissions ?? [],
-    isAuthenticated: !!auth?.user,
-    can: (permission: string) =>
-      (auth?.roles ?? []).includes('admin') || (auth?.permissions ?? []).includes(permission),
-    hasRole: (role: string) => (auth?.roles ?? []).includes(role),
-  }
-}
-"#
-    .to_string()
-}
-
-fn inertia_types_ts() -> String {
-    r#"import { PageProps } from '@inertiajs/react'
-
-declare module '@inertiajs/react' {
-  interface PageProps {
-    auth?: {
-      user: {
-        id: string
-        name: string
-        email: string
-      }
-      roles: string[]
-      permissions: string[]
-    }
-    flash?: {
-      success?: string
-      error?: string
-      info?: string
-    }
-    errors?: Record<string, string>
-    csrf_token?: string
-    modules?: Array<{
-      name: string
-      nav_items: Array<{
-        label: string
-        href: string
-        icon?: string
-      }>
-    }>
-  }
-}
-"#
-    .to_string()
-}
-
 fn home_lib_rs() -> String {
     r#"pub mod migrations;
 
@@ -2194,6 +1374,10 @@ impl Module for HomeModule {
             icon: Some("home".to_string()),
         }]
     }
+
+    fn web_root(&self) -> Option<std::path::PathBuf> {
+        Some(std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("web"))
+    }
 }
 
 inventory::submit! {
@@ -2215,66 +1399,55 @@ pub fn migrations() -> Vec<Migration> {
 }
 
 fn home_index_route_rs() -> String {
-    r#"use axum::response::IntoResponse;
+    r#"use axum::response::Response;
 use axum::routing;
 use rwfw_core::app::AppState;
-use rwfw_core::inertia::Inertia;
+use rwfw_core::view::View;
 
 pub fn route() -> axum::routing::MethodRouter<AppState> {
     routing::get(get)
 }
 
-async fn get(i: Inertia) -> impl IntoResponse {
-    i.render_with_ssr(
-        "home/Index",
+async fn get(v: View) -> Response {
+    v.render(
+        "home/index",
         serde_json::json!({
             "title": "Welcome to RWFW",
-            "description": "A modular Rust web framework with React + Inertia + SSR"
+            "description": "A modular Rust web framework — Hotwire + MiniJinja, zero npm"
         }),
     )
-    .await
 }
 "#
     .to_string()
 }
 
-fn home_index_page_tsx(context: &AppTemplateContext) -> String {
-    home_index_page_template().replace("__APP_TITLE__", &context.app_title)
-}
-
 fn home_index_page_template() -> &'static str {
-    r#"import AppLayout from '@app/layouts/AppLayout'
-
-interface Props {
-  title: string
-  description: string
-}
-
-export default function HomeIndex({ title, description }: Props) {
-  return (
-    <AppLayout>
-      <section className="rounded-3xl border border-slate-200 bg-white p-8 shadow-sm">
-        <p className="mb-3 text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">
-          __APP_TITLE__
-        </p>
-        <h2 className="mb-4 max-w-2xl text-4xl font-bold tracking-tight text-slate-950">
-          {title}
-        </h2>
-        <p className="mb-8 max-w-2xl text-lg leading-8 text-slate-600">{description}</p>
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-          {['Modules', 'Migrations', 'Single binary'].map((item) => (
-            <div key={item} className="rounded-2xl bg-slate-100 p-5">
-              <h3 className="font-semibold text-slate-900">{item}</h3>
-              <p className="mt-2 text-sm text-slate-600">
-                Convention-first primitives for internal products.
-              </p>
-            </div>
-          ))}
-        </div>
-      </section>
-    </AppLayout>
-  )
-}
+    r#"{% extends "layouts/app.html.j2" %}
+{% block title %}{{ title }}{% endblock %}
+{% block content %}
+<div class="max-w-4xl">
+  <h1 class="text-4xl font-bold text-gray-900 mb-4">{{ title }}</h1>
+  <p class="text-lg text-gray-600 mb-8">{{ description }}</p>
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+    <div class="p-6 bg-white rounded-lg shadow-sm border">
+      <h2 class="text-xl font-semibold mb-2">Modular Architecture</h2>
+      <p class="text-gray-600">Each module is self-contained with its own routes, models, and templates.</p>
+    </div>
+    <div class="p-6 bg-white rounded-lg shadow-sm border">
+      <h2 class="text-xl font-semibold mb-2">Hotwire + MiniJinja</h2>
+      <p class="text-gray-600">Server-rendered HTML with Turbo navigation — no hydration, no npm.</p>
+    </div>
+    <div class="p-6 bg-white rounded-lg shadow-sm border">
+      <h2 class="text-xl font-semibold mb-2">Turbo Streams</h2>
+      <p class="text-gray-600">Real-time partial updates over SSE/WebSocket without a JS framework.</p>
+    </div>
+    <div class="p-6 bg-white rounded-lg shadow-sm border">
+      <h2 class="text-xl font-semibold mb-2">Single Binary Deploy</h2>
+      <p class="text-gray-600">All assets embedded in one Rust binary for simple deployment.</p>
+    </div>
+  </div>
+</div>
+{% endblock %}
 "#
 }
 
@@ -2578,11 +1751,18 @@ use std::collections::HashMap;
 #[derive(Debug, Deserialize)]
 pub struct SavePostInput {
     pub title: String,
+    #[serde(default)]
     pub slug: Option<String>,
     pub excerpt: String,
     pub body: String,
+    #[serde(default)]
     pub cover_image_url: Option<String>,
+    #[serde(default = "default_status")]
     pub status: String,
+}
+
+fn default_status() -> String {
+    "draft".to_string()
 }
 
 pub struct SavePostUseCase;
@@ -2738,26 +1918,25 @@ use axum::response::{IntoResponse, Response};
 use axum::routing;
 use rwfw_core::app::AppState;
 use rwfw_core::error::AppError;
-use rwfw_core::inertia::Inertia;
+use rwfw_core::view::View;
 
 pub fn route() -> axum::routing::MethodRouter<AppState> {
     routing::get(get)
 }
 
-async fn get(State(state): State<AppState>, i: Inertia) -> Response {
+async fn get(State(state): State<AppState>, v: View) -> Response {
     let repo = PostRepository::new(state.db.clone());
     let posts = match repo.find_published().await {
         Ok(posts) => posts,
         Err(error) => return AppError::Internal(error).into_response(),
     };
 
-    i.render_with_ssr(
-        "blog/Index",
+    v.render(
+        "blog/index",
         serde_json::json!({
             "posts": posts,
         }),
     )
-    .await
 }
 "#
     .to_string()
@@ -2770,23 +1949,21 @@ use axum::response::{IntoResponse, Response};
 use axum::routing;
 use rwfw_core::app::AppState;
 use rwfw_core::error::AppError;
-use rwfw_core::inertia::Inertia;
+use rwfw_core::view::View;
 
 pub fn route() -> axum::routing::MethodRouter<AppState> {
     routing::get(get)
 }
 
-async fn get(State(state): State<AppState>, i: Inertia) -> Response {
+async fn get(State(state): State<AppState>, v: View) -> Response {
     let repo = PostRepository::new(state.db.clone());
     match repo.find_published().await {
-        Ok(posts) => i
-            .render_with_ssr(
-                "blog/posts/Index",
-                serde_json::json!({
-                    "posts": posts,
-                }),
-            )
-            .await,
+        Ok(posts) => v.render(
+            "blog/posts/index",
+            serde_json::json!({
+                "posts": posts,
+            }),
+        ),
         Err(error) => AppError::Internal(error).into_response(),
     }
 }
@@ -2801,7 +1978,7 @@ use axum::response::{IntoResponse, Response};
 use axum::routing;
 use rwfw_core::app::AppState;
 use rwfw_core::error::AppError;
-use rwfw_core::inertia::Inertia;
+use rwfw_core::view::View;
 
 pub fn route() -> axum::routing::MethodRouter<AppState> {
     routing::get(get)
@@ -2809,7 +1986,7 @@ pub fn route() -> axum::routing::MethodRouter<AppState> {
 
 async fn get(
     State(state): State<AppState>,
-    i: Inertia,
+    v: View,
     Path(slug): Path<String>,
 ) -> Response {
     let repo = PostRepository::new(state.db.clone());
@@ -2819,13 +1996,12 @@ async fn get(
         Err(error) => return AppError::Internal(error).into_response(),
     };
 
-    i.render_with_ssr(
-        "blog/posts/Show",
+    v.render(
+        "blog/posts/show",
         serde_json::json!({
             "post": post,
         }),
     )
-    .await
 }
 "#
     .to_string()
@@ -2834,19 +2010,20 @@ async fn get(
 fn blog_admin_posts_index_route_rs() -> String {
     r#"use crate::repositories::post_repo::PostRepository;
 use crate::use_cases::save_post::{SavePostInput, SavePostUseCase};
-use axum::extract::{Json, State};
-use axum::response::{IntoResponse, Response};
+use axum::extract::{Form, State};
+use axum::http::StatusCode;
+use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing;
 use rwfw_core::app::AppState;
 use rwfw_core::auth::CurrentUser;
 use rwfw_core::error::AppError;
-use rwfw_core::inertia::Inertia;
+use rwfw_core::view::View;
 
 pub fn route() -> axum::routing::MethodRouter<AppState> {
     routing::get(get).post(post)
 }
 
-async fn get(State(state): State<AppState>, user: CurrentUser, i: Inertia) -> Response {
+async fn get(State(state): State<AppState>, user: CurrentUser, v: View) -> Response {
     if !user.can("blog.posts.manage") {
         return AppError::Forbidden("Missing permission: blog.posts.manage".into()).into_response();
     }
@@ -2857,33 +2034,46 @@ async fn get(State(state): State<AppState>, user: CurrentUser, i: Inertia) -> Re
         Err(error) => return AppError::Internal(error).into_response(),
     };
 
-    i.render_with_ssr(
-        "blog/admin/posts/Index",
+    v.render(
+        "blog/admin/posts/index",
         serde_json::json!({
             "posts": posts,
         }),
     )
-    .await
 }
 
 async fn post(
     State(state): State<AppState>,
     user: CurrentUser,
-    i: Inertia,
-    Json(input): Json<SavePostInput>,
+    v: View,
+    Form(input): Form<SavePostInput>,
 ) -> Response {
     if !user.can("blog.posts.manage") {
         return AppError::Forbidden("Missing permission: blog.posts.manage".into()).into_response();
     }
 
+    let old = serde_json::json!({
+        "title": input.title,
+        "slug": input.slug,
+        "excerpt": input.excerpt,
+        "body": input.body,
+        "cover_image_url": input.cover_image_url,
+        "status": input.status,
+    });
+
     let repo = PostRepository::new(state.db.clone());
     let use_case = SavePostUseCase;
     match use_case.create(&repo, user.id, input).await {
-        Ok(post) => Inertia::redirect_with_success(
-            &format!("/blog/admin/posts/{}/edit", post.id),
-            "Post created",
+        Ok(post) => Redirect::to(&format!("/blog/admin/posts/{}/edit", post.id)).into_response(),
+        Err(AppError::Validation(errors)) => v.render_status(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "blog/admin/posts/new",
+            serde_json::json!({
+                "post": serde_json::Value::Null,
+                "old": old,
+                "errors": rwfw_core::validation::first_messages(errors),
+            }),
         ),
-        Err(AppError::Validation(errors)) => i.redirect_back_with_errors(errors),
         Err(error) => error.into_response(),
     }
 }
@@ -2892,29 +2082,28 @@ async fn post(
 }
 
 fn blog_admin_posts_new_route_rs() -> String {
-    r#"use axum::response::IntoResponse;
+    r#"use axum::response::{IntoResponse, Response};
 use axum::routing;
 use rwfw_core::app::AppState;
 use rwfw_core::auth::CurrentUser;
 use rwfw_core::error::AppError;
-use rwfw_core::inertia::Inertia;
+use rwfw_core::view::View;
 
 pub fn route() -> axum::routing::MethodRouter<AppState> {
     routing::get(get)
 }
 
-async fn get(user: CurrentUser, i: Inertia) -> impl IntoResponse {
+async fn get(user: CurrentUser, v: View) -> Response {
     if !user.can("blog.posts.manage") {
         return AppError::Forbidden("Missing permission: blog.posts.manage".into()).into_response();
     }
 
-    i.render_with_ssr(
-        "blog/admin/posts/New",
+    v.render(
+        "blog/admin/posts/new",
         serde_json::json!({
             "post": serde_json::Value::Null,
         }),
     )
-    .await
 }
 "#
     .to_string()
@@ -2923,12 +2112,11 @@ async fn get(user: CurrentUser, i: Inertia) -> impl IntoResponse {
 fn blog_admin_post_item_route_rs() -> String {
     r#"use crate::repositories::post_repo::PostRepository;
 use axum::extract::{Path, State};
-use axum::response::{IntoResponse, Response};
+use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing;
 use rwfw_core::app::AppState;
 use rwfw_core::auth::CurrentUser;
 use rwfw_core::error::AppError;
-use rwfw_core::inertia::Inertia;
 
 pub fn route() -> axum::routing::MethodRouter<AppState> {
     routing::delete(delete)
@@ -2945,7 +2133,7 @@ async fn delete(
 
     let repo = PostRepository::new(state.db.clone());
     match repo.delete(id).await {
-        Ok(()) => Inertia::redirect_with_success("/blog/admin/posts", "Post deleted"),
+        Ok(()) => Redirect::to("/blog/admin/posts").into_response(),
         Err(error) => AppError::Internal(error).into_response(),
     }
 }
@@ -2956,22 +2144,23 @@ async fn delete(
 fn blog_admin_post_edit_route_rs() -> String {
     r#"use crate::repositories::post_repo::PostRepository;
 use crate::use_cases::save_post::{SavePostInput, SavePostUseCase};
-use axum::extract::{Json, Path, State};
-use axum::response::{IntoResponse, Response};
+use axum::extract::{Form, Path, State};
+use axum::http::StatusCode;
+use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing;
 use rwfw_core::app::AppState;
 use rwfw_core::auth::CurrentUser;
 use rwfw_core::error::AppError;
-use rwfw_core::inertia::Inertia;
+use rwfw_core::view::View;
 
 pub fn route() -> axum::routing::MethodRouter<AppState> {
-    routing::get(get).put(put)
+    routing::get(get).post(put)
 }
 
 async fn get(
     State(state): State<AppState>,
     user: CurrentUser,
-    i: Inertia,
+    v: View,
     Path(id): Path<i32>,
 ) -> Response {
     if !user.can("blog.posts.manage") {
@@ -2985,34 +2174,48 @@ async fn get(
         Err(error) => return AppError::Internal(error).into_response(),
     };
 
-    i.render_with_ssr(
-        "blog/admin/posts/Edit",
+    v.render(
+        "blog/admin/posts/edit",
         serde_json::json!({
             "post": post,
         }),
     )
-    .await
 }
 
+// HTML forms can't issue PUT, so the edit form POSTs here.
 async fn put(
     State(state): State<AppState>,
     user: CurrentUser,
-    i: Inertia,
+    v: View,
     Path(id): Path<i32>,
-    Json(input): Json<SavePostInput>,
+    Form(input): Form<SavePostInput>,
 ) -> Response {
     if !user.can("blog.posts.manage") {
         return AppError::Forbidden("Missing permission: blog.posts.manage".into()).into_response();
     }
 
+    let old = serde_json::json!({
+        "id": id,
+        "title": input.title,
+        "slug": input.slug,
+        "excerpt": input.excerpt,
+        "body": input.body,
+        "cover_image_url": input.cover_image_url,
+        "status": input.status,
+    });
+
     let repo = PostRepository::new(state.db.clone());
     let use_case = SavePostUseCase;
     match use_case.update(&repo, id, user.id, input).await {
-        Ok(post) => Inertia::redirect_with_success(
-            &format!("/blog/admin/posts/{}/edit", post.id),
-            "Post saved",
+        Ok(post) => Redirect::to(&format!("/blog/admin/posts/{}/edit", post.id)).into_response(),
+        Err(AppError::Validation(errors)) => v.render_status(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "blog/admin/posts/edit",
+            serde_json::json!({
+                "post": old,
+                "errors": rwfw_core::validation::first_messages(errors),
+            }),
         ),
-        Err(AppError::Validation(errors)) => i.redirect_back_with_errors(errors),
         Err(error) => error.into_response(),
     }
 }
@@ -3020,576 +2223,227 @@ async fn put(
     .to_string()
 }
 
-fn blog_index_page_tsx() -> String {
-    r#"import { Link, usePage } from '@inertiajs/react'
-import AppLayout from '@app/layouts/AppLayout'
+fn blog_index_page_template() -> String {
+    r#"{% extends "layouts/app.html.j2" %}
+{% block title %}Blog{% endblock %}
+{% block content %}
+<div class="max-w-4xl">
+  <div class="flex justify-between items-center mb-8">
+    <h1 class="text-3xl font-bold">Blog</h1>
+    {% if auth and auth.user %}
+    <a href="/blog/admin/posts" class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">Manage posts</a>
+    {% endif %}
+  </div>
 
-interface Post {
-  id: number
-  title: string
-  slug: string
-  excerpt: string
-  cover_image_url?: string
-  published_at?: string
-}
-
-interface Props {
-  posts: Post[]
-}
-
-interface SharedData {
-  auth?: { user?: { name: string } }
-}
-
-export default function BlogIndex({ posts }: Props) {
-  const featured = posts[0]
-  const latest = posts.slice(1, 5)
-  const { props } = usePage<SharedData & Record<string, unknown>>()
-  const isSignedIn = Boolean(props.auth?.user)
-
-  return (
-    <AppLayout>
-      <div className="-m-8 min-h-screen bg-[#f4efe6] px-6 py-8 text-stone-950 md:px-10">
-        <section className="mx-auto max-w-6xl overflow-hidden rounded-[2rem] border border-stone-900/10 bg-[#fffaf0] shadow-[0_30px_80px_rgba(41,31,20,0.16)]">
-          <div className="grid gap-0 lg:grid-cols-[1.1fr_0.9fr]">
-            <div className="p-8 md:p-12">
-              <p className="text-xs font-black uppercase tracking-[0.35em] text-orange-700">
-                RWFW Journal
-              </p>
-              <h1 className="mt-6 max-w-3xl text-5xl font-black leading-[0.95] tracking-tight md:text-7xl">
-                Um blog CMS com cara de produto real.
-              </h1>
-              <p className="mt-6 max-w-2xl text-lg leading-8 text-stone-700">
-                Este exemplo demonstra rotas públicas, admin protegido, migrations por módulo,
-                repository SeaORM e páginas Inertia com React.
-              </p>
-              <div className="mt-8 flex flex-wrap gap-3">
-                <Link
-                  href="/blog/posts"
-                  className="rounded-full bg-stone-950 px-6 py-3 text-sm font-black text-white hover:bg-stone-800"
-                >
-                  Ler posts
-                </Link>
-                <Link
-                  href={isSignedIn ? '/blog/admin/posts' : '/auth/login'}
-                  className="rounded-full border border-stone-300 bg-white px-6 py-3 text-sm font-black text-stone-950 hover:border-stone-950"
-                >
-                  {isSignedIn ? 'Abrir admin' : 'Login para publicar'}
-                </Link>
-              </div>
-            </div>
-
-            <div className="relative min-h-[420px] bg-stone-950 p-8 text-white">
-              <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(251,146,60,0.5),transparent_30%),radial-gradient(circle_at_80%_20%,rgba(20,184,166,0.35),transparent_30%)]" />
-              <div className="relative flex h-full flex-col justify-end">
-                {featured ? (
-                  <article>
-                    {featured.cover_image_url && (
-                      <img
-                        src={featured.cover_image_url}
-                        alt=""
-                        className="mb-8 h-48 w-full rounded-3xl object-cover opacity-90"
-                      />
-                    )}
-                    <p className="text-xs font-black uppercase tracking-[0.3em] text-orange-200">
-                      Destaque
-                    </p>
-                    <h2 className="mt-3 text-3xl font-black leading-tight">{featured.title}</h2>
-                    <p className="mt-4 text-sm leading-6 text-stone-200">{featured.excerpt}</p>
-                    <Link
-                      href={`/blog/posts/${featured.slug}`}
-                      className="mt-6 inline-flex text-sm font-black text-orange-200 hover:text-white"
-                    >
-                      Continuar leitura
-                    </Link>
-                  </article>
-                ) : (
-                  <p className="text-stone-200">Publique o primeiro post no admin.</p>
-                )}
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <section className="mx-auto mt-8 grid max-w-6xl gap-5 md:grid-cols-2">
-          {latest.map((post) => (
-            <Link
-              key={post.id}
-              href={`/blog/posts/${post.slug}`}
-              className="rounded-[1.5rem] border border-stone-900/10 bg-white/70 p-6 shadow-sm transition hover:-translate-y-1 hover:bg-white"
-            >
-              <p className="text-xs font-black uppercase tracking-[0.25em] text-stone-500">
-                Artigo
-              </p>
-              <h3 className="mt-3 text-2xl font-black tracking-tight">{post.title}</h3>
-              <p className="mt-3 text-sm leading-6 text-stone-600">{post.excerpt}</p>
-            </Link>
-          ))}
-        </section>
-      </div>
-    </AppLayout>
-  )
-}
-"#
-    .to_string()
-}
-
-fn blog_posts_index_page_tsx() -> String {
-    r#"import { Link, usePage } from '@inertiajs/react'
-import AppLayout from '@app/layouts/AppLayout'
-
-interface Post {
-  id: number
-  title: string
-  slug: string
-  excerpt: string
-  cover_image_url?: string
-  published_at?: string
-}
-
-interface Props {
-  posts: Post[]
-}
-
-interface SharedData {
-  auth?: { user?: { name: string; email: string } }
-}
-
-export default function BlogPostsIndex({ posts }: Props) {
-  const { props } = usePage<SharedData & Record<string, unknown>>()
-  const isSignedIn = Boolean(props.auth?.user)
-
-  return (
-    <AppLayout>
-      <div className="-m-8 min-h-screen bg-stone-950 px-6 py-10 text-white md:px-10">
-        <div className="mx-auto max-w-6xl">
-          <div className="mb-10 flex flex-col justify-between gap-6 md:flex-row md:items-end">
-            <div>
-              <p className="text-xs font-black uppercase tracking-[0.35em] text-orange-300">
-                Public archive
-              </p>
-              <h1 className="mt-4 text-5xl font-black tracking-tight md:text-6xl">
-                Posts publicados
-              </h1>
-              <p className="mt-4 max-w-2xl text-stone-300">
-                A leitura é pública. A criação, edição e publicação ficam no admin protegido.
-              </p>
-            </div>
-            <Link
-              href={isSignedIn ? '/blog/admin/posts' : '/auth/login'}
-              className="rounded-full bg-orange-300 px-6 py-3 text-center text-sm font-black text-stone-950 hover:bg-orange-200"
-            >
-              {isSignedIn ? 'Gerenciar posts' : 'Login para publicar'}
-            </Link>
-          </div>
-
-          {posts.length === 0 ? (
-            <div className="rounded-[2rem] border border-white/10 bg-white/5 p-10 text-stone-300">
-              Nenhum post publicado ainda.
-            </div>
-          ) : (
-            <div className="grid gap-5 md:grid-cols-2">
-              {posts.map((post, index) => (
-                <Link
-                  key={post.id}
-                  href={`/blog/posts/${post.slug}`}
-                  className={`group overflow-hidden rounded-[2rem] border border-white/10 bg-white/[0.06] transition hover:-translate-y-1 hover:bg-white/[0.1] ${
-                    index === 0 ? 'md:col-span-2 md:grid md:grid-cols-[0.9fr_1.1fr]' : ''
-                  }`}
-                >
-                  {post.cover_image_url && (
-                    <img
-                      src={post.cover_image_url}
-                      alt=""
-                      className="h-56 w-full object-cover opacity-85 transition group-hover:opacity-100 md:h-full"
-                    />
-                  )}
-                  <div className="p-7">
-                    <p className="text-xs font-black uppercase tracking-[0.25em] text-orange-300">
-                      {post.published_at ? new Date(post.published_at).toLocaleDateString() : 'Publicado'}
-                    </p>
-                    <h2 className="mt-4 text-3xl font-black tracking-tight">{post.title}</h2>
-                    <p className="mt-4 leading-7 text-stone-300">{post.excerpt}</p>
-                    <span className="mt-6 inline-flex text-sm font-black text-orange-200">
-                      Ler artigo
-                    </span>
-                  </div>
-                </Link>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-    </AppLayout>
-  )
-}
-"#
-    .to_string()
-}
-
-fn blog_post_show_page_tsx() -> String {
-    r#"import { Link } from '@inertiajs/react'
-import AppLayout from '@app/layouts/AppLayout'
-
-interface Post {
-  id: number
-  title: string
-  slug: string
-  excerpt: string
-  body: string
-  cover_image_url?: string
-  published_at?: string
-}
-
-interface Props {
-  post: Post
-}
-
-export default function BlogPostShow({ post }: Props) {
-  return (
-    <AppLayout>
-      <article className="-m-8 min-h-screen bg-[#f7f0df] px-6 py-10 text-stone-950 md:px-10">
-        <div className="mx-auto max-w-4xl">
-          <Link href="/blog/posts" className="text-sm font-black text-orange-700 hover:text-stone-950">
-            Voltar para posts
-          </Link>
-          <header className="mt-8">
-            <p className="text-xs font-black uppercase tracking-[0.35em] text-stone-500">
-              RWFW Journal
-            </p>
-            <h1 className="mt-5 text-5xl font-black leading-tight tracking-tight md:text-7xl">
-              {post.title}
-            </h1>
-            <p className="mt-6 max-w-3xl text-xl leading-9 text-stone-700">{post.excerpt}</p>
-          </header>
-
-          {post.cover_image_url && (
-            <img
-              src={post.cover_image_url}
-              alt=""
-              className="mt-10 h-[420px] w-full rounded-[2rem] object-cover shadow-2xl"
-            />
-          )}
-
-          <div className="mt-12 whitespace-pre-wrap rounded-[2rem] bg-white p-8 text-xl leading-10 text-stone-800 shadow-sm md:p-12">
-            {post.body}
-          </div>
+  {% if posts | length == 0 %}
+    <p class="text-gray-500">No published posts yet.</p>
+  {% else %}
+    <div class="space-y-4">
+      {% for post in posts %}
+      <article class="p-6 bg-white rounded-lg shadow-sm border">
+        <a href="/blog/posts/{{ post.slug }}">
+          <h2 class="text-xl font-semibold hover:text-blue-600 transition-colors">{{ post.title }}</h2>
+        </a>
+        <p class="mt-2 text-gray-600 line-clamp-2">{{ post.excerpt }}</p>
+        <div class="mt-3 flex items-center gap-4 text-sm text-gray-400">
+          <span>{{ post.published_at | default(post.created_at) }}</span>
         </div>
       </article>
-    </AppLayout>
-  )
-}
+      {% endfor %}
+    </div>
+  {% endif %}
+</div>
+{% endblock %}
 "#
     .to_string()
 }
 
-fn blog_admin_posts_index_page_tsx() -> String {
-    r#"import { Link, router } from '@inertiajs/react'
-import AppLayout from '@app/layouts/AppLayout'
+fn blog_posts_index_page_template() -> String {
+    r#"{% extends "layouts/app.html.j2" %}
+{% block title %}Posts{% endblock %}
+{% block content %}
+<div class="max-w-4xl">
+  <div class="flex justify-between items-center mb-8">
+    <h1 class="text-3xl font-bold">Posts</h1>
+    {% if auth and auth.user %}
+    <a href="/blog/admin/posts/new" class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">New Post</a>
+    {% endif %}
+  </div>
 
-interface Post {
-  id: number
-  title: string
-  slug: string
-  excerpt: string
-  status: 'draft' | 'published'
-  updated_at: string
-}
-
-interface Props {
-  posts: Post[]
-}
-
-export default function BlogAdminPostsIndex({ posts }: Props) {
-  function deletePost(post: Post) {
-    if (confirm(`Delete "${post.title}"?`)) {
-      router.delete(`/blog/admin/posts/${post.id}`)
-    }
-  }
-
-  return (
-    <AppLayout>
-      <div className="rounded-[2rem] border border-slate-200 bg-white p-8 shadow-sm">
-        <div className="mb-8 flex flex-col justify-between gap-4 md:flex-row md:items-center">
-          <div>
-            <p className="text-xs font-black uppercase tracking-[0.25em] text-slate-500">
-              Protected CMS
-            </p>
-            <h1 className="mt-3 text-4xl font-black tracking-tight text-slate-950">
-              Blog admin
-            </h1>
-          </div>
-          <Link
-            href="/blog/admin/posts/new"
-            className="rounded-full bg-slate-950 px-5 py-3 text-center text-sm font-black text-white hover:bg-slate-800"
-          >
-            New post
-          </Link>
-        </div>
-
-        <div className="overflow-hidden rounded-2xl border border-slate-200">
-          {posts.length === 0 ? (
-            <div className="p-8 text-slate-500">No posts yet.</div>
-          ) : (
-            <table className="w-full text-left text-sm">
-              <thead className="bg-slate-100 text-xs uppercase tracking-[0.2em] text-slate-500">
-                <tr>
-                  <th className="px-5 py-4">Post</th>
-                  <th className="px-5 py-4">Status</th>
-                  <th className="px-5 py-4 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-200">
-                {posts.map((post) => (
-                  <tr key={post.id} className="bg-white">
-                    <td className="px-5 py-4">
-                      <div className="font-black text-slate-950">{post.title}</div>
-                      <div className="mt-1 text-xs text-slate-500">/{post.slug}</div>
-                    </td>
-                    <td className="px-5 py-4">
-                      <span className={`rounded-full px-3 py-1 text-xs font-black ${
-                        post.status === 'published'
-                          ? 'bg-emerald-100 text-emerald-800'
-                          : 'bg-amber-100 text-amber-800'
-                      }`}>
-                        {post.status}
-                      </span>
-                    </td>
-                    <td className="px-5 py-4">
-                      <div className="flex justify-end gap-2">
-                        {post.status === 'published' && (
-                          <Link
-                            href={`/blog/posts/${post.slug}`}
-                            className="rounded-full border border-slate-200 px-3 py-2 text-xs font-black text-slate-700 hover:border-slate-950"
-                          >
-                            View
-                          </Link>
-                        )}
-                        <Link
-                          href={`/blog/admin/posts/${post.id}/edit`}
-                          className="rounded-full border border-slate-200 px-3 py-2 text-xs font-black text-slate-700 hover:border-slate-950"
-                        >
-                          Edit
-                        </Link>
-                        <button
-                          type="button"
-                          onClick={() => deletePost(post)}
-                          className="rounded-full bg-red-50 px-3 py-2 text-xs font-black text-red-700 hover:bg-red-100"
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
+  <div class="space-y-4">
+    {% for post in posts %}
+    <article class="p-6 bg-white rounded-lg shadow-sm border">
+      <a href="/blog/posts/{{ post.slug }}">
+        <h2 class="text-xl font-semibold hover:text-blue-600 transition-colors">{{ post.title }}</h2>
+      </a>
+      <p class="mt-2 text-gray-600 line-clamp-2">{{ post.excerpt }}</p>
+      <div class="mt-3 flex items-center gap-4 text-sm text-gray-400">
+        <span>{{ post.published_at | default(post.created_at) }}</span>
       </div>
-    </AppLayout>
-  )
-}
+    </article>
+    {% endfor %}
+  </div>
+  {% if posts | length == 0 %}
+    <p class="text-gray-500">No posts yet.</p>
+  {% endif %}
+</div>
+{% endblock %}
 "#
     .to_string()
 }
 
-fn blog_admin_post_form_tsx() -> String {
-    r#"import { useForm } from '@inertiajs/react'
-import type { FormEvent } from 'react'
+fn blog_post_show_page_template() -> String {
+    r#"{% extends "layouts/app.html.j2" %}
+{% block title %}{{ post.title }}{% endblock %}
+{% block content %}
+<div class="max-w-3xl">
+  <div class="mb-6">
+    <a href="/blog/posts" class="text-blue-600 hover:underline text-sm">&larr; Back to posts</a>
+  </div>
 
-export interface BlogPostFormValue {
-  id?: number
-  title: string
-  slug?: string
-  excerpt: string
-  body: string
-  cover_image_url?: string
-  status: 'draft' | 'published'
-}
+  <article class="bg-white rounded-lg shadow-sm border p-8">
+    {% if post.cover_image_url %}
+    <img src="{{ post.cover_image_url }}" alt="" class="mb-6 w-full rounded-lg object-cover">
+    {% endif %}
+    <h1 class="text-3xl font-bold mb-4">{{ post.title }}</h1>
+    <div class="flex items-center gap-4 text-sm text-gray-400 mb-8">
+      <span>{{ post.published_at | default(post.created_at) }}</span>
+    </div>
+    <p class="text-lg text-gray-600 mb-6">{{ post.excerpt }}</p>
+    <div class="prose max-w-none">
+      <p>{{ post.body }}</p>
+    </div>
+  </article>
 
-interface Props {
-  post?: BlogPostFormValue | null
-  submitTo: string
-  method: 'post' | 'put'
-}
-
-export default function BlogPostForm({ post, submitTo, method }: Props) {
-  const { data, setData, post: create, put, processing, errors } = useForm({
-    title: post?.title ?? '',
-    slug: post?.slug ?? '',
-    excerpt: post?.excerpt ?? '',
-    body: post?.body ?? '',
-    cover_image_url: post?.cover_image_url ?? '',
-    status: post?.status ?? 'draft',
-  })
-
-  function submit(event: FormEvent) {
-    event.preventDefault()
-    if (method === 'post') {
-      create(submitTo)
-    } else {
-      put(submitTo)
-    }
-  }
-
-  return (
-    <form onSubmit={submit} className="space-y-6">
-      <div className="grid gap-5 md:grid-cols-2">
-        <div>
-          <label htmlFor="title" className="mb-2 block text-sm font-black text-slate-700">
-            Title
-          </label>
-          <input
-            id="title"
-            value={data.title}
-            onChange={(event) => setData('title', event.target.value)}
-            className="w-full rounded-2xl border border-slate-300 px-4 py-3 outline-none focus:border-slate-950"
-          />
-          {errors.title && <p className="mt-2 text-sm text-red-600">{errors.title}</p>}
-        </div>
-
-        <div>
-          <label htmlFor="slug" className="mb-2 block text-sm font-black text-slate-700">
-            Slug
-          </label>
-          <input
-            id="slug"
-            value={data.slug}
-            onChange={(event) => setData('slug', event.target.value)}
-            placeholder="generated-from-title"
-            className="w-full rounded-2xl border border-slate-300 px-4 py-3 outline-none focus:border-slate-950"
-          />
-        </div>
-      </div>
-
-      <div>
-        <label htmlFor="excerpt" className="mb-2 block text-sm font-black text-slate-700">
-          Excerpt
-        </label>
-        <textarea
-          id="excerpt"
-          rows={3}
-          value={data.excerpt}
-          onChange={(event) => setData('excerpt', event.target.value)}
-          className="w-full rounded-2xl border border-slate-300 px-4 py-3 outline-none focus:border-slate-950"
-        />
-        {errors.excerpt && <p className="mt-2 text-sm text-red-600">{errors.excerpt}</p>}
-      </div>
-
-      <div>
-        <label htmlFor="cover" className="mb-2 block text-sm font-black text-slate-700">
-          Cover image URL
-        </label>
-        <input
-          id="cover"
-          value={data.cover_image_url}
-          onChange={(event) => setData('cover_image_url', event.target.value)}
-          className="w-full rounded-2xl border border-slate-300 px-4 py-3 outline-none focus:border-slate-950"
-        />
-      </div>
-
-      <div>
-        <label htmlFor="body" className="mb-2 block text-sm font-black text-slate-700">
-          Body
-        </label>
-        <textarea
-          id="body"
-          rows={14}
-          value={data.body}
-          onChange={(event) => setData('body', event.target.value)}
-          className="w-full rounded-2xl border border-slate-300 px-4 py-3 leading-7 outline-none focus:border-slate-950"
-        />
-        {errors.body && <p className="mt-2 text-sm text-red-600">{errors.body}</p>}
-      </div>
-
-      <div className="flex flex-col justify-between gap-4 rounded-2xl bg-slate-100 p-4 md:flex-row md:items-center">
-        <select
-          value={data.status}
-          onChange={(event) => setData('status', event.target.value as 'draft' | 'published')}
-          className="rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-black"
-        >
-          <option value="draft">Draft</option>
-          <option value="published">Published</option>
-        </select>
-        <button
-          type="submit"
-          disabled={processing}
-          className="rounded-full bg-slate-950 px-6 py-3 text-sm font-black text-white hover:bg-slate-800 disabled:opacity-60"
-        >
-          {processing ? 'Saving...' : 'Save post'}
-        </button>
-      </div>
-    </form>
-  )
-}
+  {% if auth and auth.user %}
+  <div class="mt-6 flex gap-4">
+    <a href="/blog/admin/posts/{{ post.id }}/edit" class="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200">Edit</a>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
 "#
     .to_string()
 }
 
-fn blog_admin_post_new_page_tsx() -> String {
-    r#"import { Link } from '@inertiajs/react'
-import AppLayout from '@app/layouts/AppLayout'
-import BlogPostForm from './Form'
+fn blog_admin_posts_index_page_template() -> String {
+    r#"{% extends "layouts/app.html.j2" %}
+{% block title %}Manage Posts{% endblock %}
+{% block content %}
+<div class="max-w-4xl">
+  <div class="flex justify-between items-center mb-8">
+    <h1 class="text-3xl font-bold">Manage Posts</h1>
+    <a href="/blog/admin/posts/new" class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">New Post</a>
+  </div>
 
-export default function BlogAdminPostNew() {
-  return (
-    <AppLayout>
-      <div className="rounded-[2rem] border border-slate-200 bg-white p-8 shadow-sm">
-        <Link href="/blog/admin/posts" className="text-sm font-black text-slate-500 hover:text-slate-950">
-          Back to admin
-        </Link>
-        <h1 className="mt-4 text-4xl font-black tracking-tight text-slate-950">New post</h1>
-        <div className="mt-8">
-          <BlogPostForm submitTo="/blog/admin/posts" method="post" />
-        </div>
-      </div>
-    </AppLayout>
-  )
-}
+  {% if posts | length == 0 %}
+    <p class="text-gray-500">No posts yet. Create the first one.</p>
+  {% else %}
+  <div class="overflow-hidden rounded-lg border bg-white shadow-sm">
+    <table class="min-w-full divide-y divide-gray-200">
+      <thead class="bg-gray-50">
+        <tr>
+          <th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Title</th>
+          <th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Status</th>
+          <th class="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">Actions</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-gray-100">
+        {% for post in posts %}
+        <tr>
+          <td class="px-4 py-3">
+            <a href="/blog/admin/posts/{{ post.id }}/edit" class="font-medium text-gray-900 hover:text-blue-600">{{ post.title }}</a>
+          </td>
+          <td class="px-4 py-3 text-sm text-gray-500">{{ post.status }}</td>
+          <td class="px-4 py-3 text-right">
+            <a href="/blog/admin/posts/{{ post.id }}/edit" class="text-sm text-blue-600 hover:underline">Edit</a>
+            <a href="/blog/admin/posts/{{ post.id }}" data-turbo-method="delete"
+               data-turbo-confirm="Delete this post?"
+               class="ml-4 text-sm text-red-600 hover:underline">Delete</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
 "#
     .to_string()
 }
 
-fn blog_admin_post_edit_page_tsx() -> String {
-    r#"import { Link } from '@inertiajs/react'
-import AppLayout from '@app/layouts/AppLayout'
-import BlogPostForm, { type BlogPostFormValue } from './Form'
-
-interface Props {
-  post: BlogPostFormValue
-}
-
-export default function BlogAdminPostEdit({ post }: Props) {
-  return (
-    <AppLayout>
-      <div className="rounded-[2rem] border border-slate-200 bg-white p-8 shadow-sm">
-        <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
-          <div>
-            <Link href="/blog/admin/posts" className="text-sm font-black text-slate-500 hover:text-slate-950">
-              Back to admin
-            </Link>
-            <h1 className="mt-4 text-4xl font-black tracking-tight text-slate-950">Edit post</h1>
-          </div>
-          {post.status === 'published' && post.slug && (
-            <Link
-              href={`/blog/posts/${post.slug}`}
-              className="rounded-full border border-slate-300 px-5 py-3 text-sm font-black text-slate-700 hover:border-slate-950"
-            >
-              View public post
-            </Link>
-          )}
-        </div>
-        <div className="mt-8">
-          <BlogPostForm post={post} submitTo={`/blog/admin/posts/${post.id}/edit`} method="put" />
-        </div>
-      </div>
-    </AppLayout>
-  )
-}
+fn blog_admin_post_form_template() -> String {
+    r#"<form method="post" action="{{ action }}" class="bg-white rounded-lg shadow-sm border p-8 space-y-6">
+  <input type="hidden" name="_csrf" value="{{ csrf_token }}">
+  <x-field name="title" label="Title" :value="old.title | default(post.title) | default('')" />
+  <x-field name="slug" label="Slug (optional)" :value="old.slug | default(post.slug) | default('')" :required="false" />
+  <x-field name="excerpt" label="Excerpt" type="textarea" :value="old.excerpt | default(post.excerpt) | default('')" />
+  <x-field name="body" label="Body" type="textarea" :value="old.body | default(post.body) | default('')" />
+  <x-field name="cover_image_url" label="Cover image URL (optional)" :value="old.cover_image_url | default(post.cover_image_url) | default('')" :required="false" />
+  <div>
+    <label for="status" class="block text-sm font-medium text-gray-700">Status</label>
+    {% set current_status = old.status | default(post.status) | default('draft') %}
+    <select id="status" name="status"
+            class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500">
+      <option value="draft" {{ 'selected' if current_status == 'draft' }}>Draft</option>
+      <option value="published" {{ 'selected' if current_status == 'published' }}>Published</option>
+    </select>
+    {% if errors.status %}<p class="mt-1 text-sm text-red-600">{{ errors.status }}</p>{% endif %}
+  </div>
+  <div class="flex gap-4">
+    <button type="submit" data-turbo-submits-with="Saving..." class="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50">{{ submit_label }}</button>
+    <a href="/blog/admin/posts" class="px-6 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200">Cancel</a>
+  </div>
+</form>
 "#
     .to_string()
 }
+
+fn blog_admin_post_new_page_template() -> String {
+    r#"{% extends "layouts/app.html.j2" %}
+{% block title %}New Post{% endblock %}
+{% block content %}
+<div class="max-w-3xl">
+  <div class="mb-6">
+    <a href="/blog/admin/posts" class="text-blue-600 hover:underline text-sm">&larr; Back to posts</a>
+  </div>
+  <h1 class="text-3xl font-bold mb-8">New Post</h1>
+  {% set action = "/blog/admin/posts" %}
+  {% set submit_label = "Create Post" %}
+  {% include "blog/admin/posts/_form.html.j2" %}
+</div>
+{% endblock %}
+"#
+    .to_string()
+}
+
+fn blog_admin_post_edit_page_template() -> String {
+    r#"{% extends "layouts/app.html.j2" %}
+{% block title %}Edit Post{% endblock %}
+{% block content %}
+<div class="max-w-3xl">
+  <div class="mb-6">
+    <a href="/blog/admin/posts" class="text-blue-600 hover:underline text-sm">&larr; Back to posts</a>
+  </div>
+  <h1 class="text-3xl font-bold mb-8">Edit Post</h1>
+  {% set action = "/blog/admin/posts/" ~ post.id ~ "/edit" %}
+  {% set submit_label = "Save Changes" %}
+  {% include "blog/admin/posts/_form.html.j2" %}
+</div>
+{% endblock %}
+"#
+    .to_string()
+}
+
+
+// ---------------------------------------------------------------------------
+// Ecommerce example (npm-free Hotwire): a `shop` module with products,
+// categories, a cookie-backed server-rendered cart, and a fake checkout that
+// persists orders. Mirrors the Hotwire blog example: `View` routes,
+// `.html.j2` templates extending `layouts/app.html.j2`, form-based mutations
+// with CSRF, and `data-turbo-method` links.
+// ---------------------------------------------------------------------------
 
 fn write_ecommerce_example(app_dir: &Path, context: &AppTemplateContext) -> anyhow::Result<()> {
     write_file(
@@ -3599,6 +2453,10 @@ fn write_ecommerce_example(app_dir: &Path, context: &AppTemplateContext) -> anyh
     write_file(
         &app_dir.join("crates/modules/shop/src/lib.rs"),
         shop_lib_rs(),
+    )?;
+    write_file(
+        &app_dir.join("crates/modules/shop/src/cart.rs"),
+        shop_cart_rs(),
     )?;
     write_file(
         &app_dir.join("crates/modules/shop/src/migrations/mod.rs"),
@@ -3657,6 +2515,14 @@ fn write_ecommerce_example(app_dir: &Path, context: &AppTemplateContext) -> anyh
         shop_cart_route_rs(),
     )?;
     write_file(
+        &app_dir.join("crates/modules/shop/src/routes/cart/add.rs"),
+        shop_cart_add_route_rs(),
+    )?;
+    write_file(
+        &app_dir.join("crates/modules/shop/src/routes/cart/update.rs"),
+        shop_cart_update_route_rs(),
+    )?;
+    write_file(
         &app_dir.join("crates/modules/shop/src/routes/checkout/index.rs"),
         shop_checkout_route_rs(),
     )?;
@@ -3665,32 +2531,28 @@ fn write_ecommerce_example(app_dir: &Path, context: &AppTemplateContext) -> anyh
         shop_order_show_route_rs(),
     )?;
     write_file(
-        &app_dir.join("crates/modules/shop/web/components/cart.ts"),
-        shop_cart_ts(),
+        &app_dir.join("crates/modules/shop/web/templates/index.html.j2"),
+        shop_index_page_template(),
     )?;
     write_file(
-        &app_dir.join("crates/modules/shop/web/components/ProductCard.tsx"),
-        shop_product_card_tsx(),
+        &app_dir.join("crates/modules/shop/web/templates/_product_card.html.j2"),
+        shop_product_card_template(),
     )?;
     write_file(
-        &app_dir.join("crates/modules/shop/web/pages/Index.tsx"),
-        shop_index_page_tsx(),
+        &app_dir.join("crates/modules/shop/web/templates/products/show.html.j2"),
+        shop_product_show_page_template(),
     )?;
     write_file(
-        &app_dir.join("crates/modules/shop/web/pages/products/Show.tsx"),
-        shop_product_show_page_tsx(),
+        &app_dir.join("crates/modules/shop/web/templates/cart/index.html.j2"),
+        shop_cart_page_template(),
     )?;
     write_file(
-        &app_dir.join("crates/modules/shop/web/pages/cart/Index.tsx"),
-        shop_cart_page_tsx(),
+        &app_dir.join("crates/modules/shop/web/templates/checkout/index.html.j2"),
+        shop_checkout_page_template(),
     )?;
     write_file(
-        &app_dir.join("crates/modules/shop/web/pages/checkout/Index.tsx"),
-        shop_checkout_page_tsx(),
-    )?;
-    write_file(
-        &app_dir.join("crates/modules/shop/web/pages/orders/Show.tsx"),
-        shop_order_show_page_tsx(),
+        &app_dir.join("crates/modules/shop/web/templates/orders/show.html.j2"),
+        shop_order_show_page_template(),
     )?;
 
     Ok(())
@@ -3723,13 +2585,15 @@ uuid = {{ workspace = true }}
 }
 
 fn shop_lib_rs() -> String {
-    r#"pub mod migrations;
+    r#"pub mod cart;
+pub mod migrations;
 pub mod models;
 pub mod repositories;
 pub mod use_cases;
 
 use axum::Router;
 use rwfw_core::app::AppState;
+use rwfw_core::auth::Permission;
 use rwfw_core::module::{Module, ModuleRegistration, NavItem};
 
 #[rwfw_macros::rwfw_routes("src/routes")]
@@ -3757,6 +2621,10 @@ impl Module for ShopModule {
         migrations::migrations()
     }
 
+    fn permissions(&self) -> Vec<Permission> {
+        vec![Permission::new("shop.orders.view", "View shop orders")]
+    }
+
     fn nav_items(&self) -> Vec<NavItem> {
         vec![
             NavItem {
@@ -3771,10 +2639,110 @@ impl Module for ShopModule {
             },
         ]
     }
+
+    fn web_root(&self) -> Option<std::path::PathBuf> {
+        Some(std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("web"))
+    }
 }
 
 inventory::submit! {
     ModuleRegistration::new("shop", || Box::new(ShopModule::new()))
+}
+"#
+    .to_string()
+}
+
+fn shop_cart_rs() -> String {
+    r#"//! Cookie-backed, server-rendered cart. The cart lives entirely on the server
+//! side as a small `rwfw_cart` cookie holding `product_id:quantity` pairs, so
+//! there is no client-side JS state (no localStorage, no React store). Every
+//! mutation is a form POST that rewrites the cookie and redirects.
+
+use axum::http::header::{COOKIE, SET_COOKIE};
+use axum::http::{HeaderMap, HeaderValue};
+use std::collections::BTreeMap;
+
+pub const CART_COOKIE: &str = "rwfw_cart";
+const MAX_QUANTITY: i32 = 20;
+
+/// Parse the cart cookie into an ordered map of `product_id -> quantity`.
+pub fn parse(headers: &HeaderMap) -> BTreeMap<i32, i32> {
+    let mut cart = BTreeMap::new();
+    let Some(raw) = cookie_value(headers, CART_COOKIE) else {
+        return cart;
+    };
+
+    for pair in raw.split(',') {
+        let Some((id, qty)) = pair.split_once(':') else {
+            continue;
+        };
+        let (Ok(id), Ok(qty)) = (id.trim().parse::<i32>(), qty.trim().parse::<i32>()) else {
+            continue;
+        };
+        if id <= 0 || qty <= 0 {
+            continue;
+        }
+        cart.insert(id, qty.min(MAX_QUANTITY));
+    }
+
+    cart
+}
+
+/// Add (or increment) a product in the cart and return the updated map.
+pub fn add(mut cart: BTreeMap<i32, i32>, product_id: i32, quantity: i32) -> BTreeMap<i32, i32> {
+    if product_id <= 0 || quantity <= 0 {
+        return cart;
+    }
+    let entry = cart.entry(product_id).or_insert(0);
+    *entry = (*entry + quantity).min(MAX_QUANTITY);
+    cart
+}
+
+/// Set an explicit quantity for a product. A quantity of `0` removes it.
+pub fn set_quantity(
+    mut cart: BTreeMap<i32, i32>,
+    product_id: i32,
+    quantity: i32,
+) -> BTreeMap<i32, i32> {
+    if product_id <= 0 {
+        return cart;
+    }
+    if quantity <= 0 {
+        cart.remove(&product_id);
+    } else {
+        cart.insert(product_id, quantity.min(MAX_QUANTITY));
+    }
+    cart
+}
+
+/// Serialize the cart back into a `Set-Cookie` header value.
+pub fn cookie(cart: &BTreeMap<i32, i32>) -> Option<HeaderValue> {
+    let value = if cart.is_empty() {
+        format!("{CART_COOKIE}=; Path=/; Max-Age=0; SameSite=Lax")
+    } else {
+        let body = cart
+            .iter()
+            .map(|(id, qty)| format!("{id}:{qty}"))
+            .collect::<Vec<_>>()
+            .join(",");
+        format!("{CART_COOKIE}={body}; Path=/; Max-Age=2592000; SameSite=Lax")
+    };
+    value.parse().ok()
+}
+
+/// Attach the serialized cart cookie to a response.
+pub fn apply(response: &mut axum::response::Response, cart: &BTreeMap<i32, i32>) {
+    if let Some(value) = cookie(cart) {
+        response.headers_mut().append(SET_COOKIE, value);
+    }
+}
+
+fn cookie_value<'a>(headers: &'a HeaderMap, name: &str) -> Option<&'a str> {
+    let header = headers.get(COOKIE)?.to_str().ok()?;
+    header.split(';').find_map(|cookie| {
+        let (key, value) = cookie.trim().split_once('=')?;
+        (key == name).then_some(value)
+    })
 }
 "#
     .to_string()
@@ -4248,22 +3216,19 @@ pub struct CheckoutInput {
     pub address_line: String,
     pub city: String,
     pub country: String,
-    pub items: Vec<CheckoutLineInput>,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct CheckoutLineInput {
-    pub product_id: i32,
-    pub quantity: i32,
 }
 
 pub struct CheckoutUseCase;
 
 impl CheckoutUseCase {
+    /// Run a fake checkout: validate the buyer fields, re-price the cart against
+    /// live product data, check inventory, and persist the order. The cart is the
+    /// server-side cookie map (`product_id -> quantity`) the route already parsed.
     pub async fn execute(
         &self,
         repo: &ShopRepository,
         input: CheckoutInput,
+        cart: &BTreeMap<i32, i32>,
     ) -> Result<order::Model, AppError> {
         let customer_name = input.customer_name.trim().to_string();
         let customer_email = input.customer_email.trim().to_string();
@@ -4289,10 +3254,9 @@ impl CheckoutUseCase {
         }
 
         let mut quantities = BTreeMap::new();
-        for item in input.items {
-            if item.quantity > 0 {
-                let quantity = item.quantity.min(20);
-                *quantities.entry(item.product_id).or_insert(0) += quantity;
+        for (product_id, quantity) in cart {
+            if *quantity > 0 {
+                quantities.insert(*product_id, (*quantity).min(20));
             }
         }
 
@@ -4351,811 +3315,6 @@ impl CheckoutUseCase {
         .await
         .map_err(AppError::Internal)
     }
-}
-"#
-    .to_string()
-}
-
-fn shop_index_route_rs() -> String {
-    r#"use crate::repositories::shop_repo::ShopRepository;
-use axum::extract::{Query, State};
-use axum::response::{IntoResponse, Response};
-use axum::routing;
-use rwfw_core::app::AppState;
-use rwfw_core::error::AppError;
-use rwfw_core::inertia::Inertia;
-use serde::Deserialize;
-
-#[derive(Debug, Deserialize)]
-struct ProductFilters {
-    q: Option<String>,
-    category: Option<String>,
-}
-
-pub fn route() -> axum::routing::MethodRouter<AppState> {
-    routing::get(get)
-}
-
-async fn get(
-    State(state): State<AppState>,
-    i: Inertia,
-    Query(filters): Query<ProductFilters>,
-) -> Response {
-    let repo = ShopRepository::new(state.db.clone());
-    let categories = match repo.categories().await {
-        Ok(categories) => categories,
-        Err(error) => return AppError::Internal(error).into_response(),
-    };
-    let featured = match repo.featured_products().await {
-        Ok(products) => products,
-        Err(error) => return AppError::Internal(error).into_response(),
-    };
-    let products = match repo
-        .products(filters.q.as_deref(), filters.category.as_deref())
-        .await
-    {
-        Ok(products) => products,
-        Err(error) => return AppError::Internal(error).into_response(),
-    };
-
-    i.render_with_ssr(
-        "shop/Index",
-        serde_json::json!({
-            "categories": categories,
-            "featured": featured,
-            "products": products,
-            "filters": {
-                "q": filters.q.unwrap_or_default(),
-                "category": filters.category.unwrap_or_default(),
-            }
-        }),
-    )
-    .await
-}
-"#
-    .to_string()
-}
-
-fn shop_product_show_route_rs() -> String {
-    r#"use crate::repositories::shop_repo::ShopRepository;
-use axum::extract::{Path, State};
-use axum::response::{IntoResponse, Response};
-use axum::routing;
-use rwfw_core::app::AppState;
-use rwfw_core::error::AppError;
-use rwfw_core::inertia::Inertia;
-
-pub fn route() -> axum::routing::MethodRouter<AppState> {
-    routing::get(get)
-}
-
-async fn get(
-    State(state): State<AppState>,
-    i: Inertia,
-    Path(slug): Path<String>,
-) -> Response {
-    let repo = ShopRepository::new(state.db.clone());
-    let product = match repo.find_product_by_slug(&slug).await {
-        Ok(Some(product)) => product,
-        Ok(None) => return AppError::NotFound(format!("Product not found: {slug}")).into_response(),
-        Err(error) => return AppError::Internal(error).into_response(),
-    };
-
-    i.render_with_ssr(
-        "shop/products/Show",
-        serde_json::json!({
-            "product": product,
-        }),
-    )
-    .await
-}
-"#
-    .to_string()
-}
-
-fn shop_cart_route_rs() -> String {
-    r#"use crate::repositories::shop_repo::ShopRepository;
-use axum::extract::State;
-use axum::response::{IntoResponse, Response};
-use axum::routing;
-use rwfw_core::app::AppState;
-use rwfw_core::error::AppError;
-use rwfw_core::inertia::Inertia;
-
-pub fn route() -> axum::routing::MethodRouter<AppState> {
-    routing::get(get)
-}
-
-async fn get(State(state): State<AppState>, i: Inertia) -> Response {
-    let repo = ShopRepository::new(state.db.clone());
-    let products = match repo.products(None, None).await {
-        Ok(products) => products,
-        Err(error) => return AppError::Internal(error).into_response(),
-    };
-
-    i.render_with_ssr(
-        "shop/cart/Index",
-        serde_json::json!({
-            "products": products,
-        }),
-    )
-    .await
-}
-"#
-    .to_string()
-}
-
-fn shop_checkout_route_rs() -> String {
-    r#"use crate::repositories::shop_repo::ShopRepository;
-use crate::use_cases::checkout::{CheckoutInput, CheckoutUseCase};
-use axum::extract::{Json, State};
-use axum::response::{IntoResponse, Response};
-use axum::routing;
-use rwfw_core::app::AppState;
-use rwfw_core::error::AppError;
-use rwfw_core::inertia::Inertia;
-
-pub fn route() -> axum::routing::MethodRouter<AppState> {
-    routing::get(get).post(post)
-}
-
-async fn get(State(state): State<AppState>, i: Inertia) -> Response {
-    let repo = ShopRepository::new(state.db.clone());
-    let products = match repo.products(None, None).await {
-        Ok(products) => products,
-        Err(error) => return AppError::Internal(error).into_response(),
-    };
-
-    i.render_with_ssr(
-        "shop/checkout/Index",
-        serde_json::json!({
-            "products": products,
-        }),
-    )
-    .await
-}
-
-async fn post(
-    State(state): State<AppState>,
-    i: Inertia,
-    Json(input): Json<CheckoutInput>,
-) -> Response {
-    let repo = ShopRepository::new(state.db.clone());
-    let use_case = CheckoutUseCase;
-
-    match use_case.execute(&repo, input).await {
-        Ok(order) => Inertia::redirect_with_success(
-            &format!("/shop/orders/{}", order.number),
-            "Fake checkout completed",
-        ),
-        Err(AppError::Validation(errors)) => i.redirect_back_with_errors(errors),
-        Err(error) => error.into_response(),
-    }
-}
-"#
-    .to_string()
-}
-
-fn shop_order_show_route_rs() -> String {
-    r#"use crate::repositories::shop_repo::ShopRepository;
-use axum::extract::{Path, State};
-use axum::response::{IntoResponse, Response};
-use axum::routing;
-use rwfw_core::app::AppState;
-use rwfw_core::error::AppError;
-use rwfw_core::inertia::Inertia;
-
-pub fn route() -> axum::routing::MethodRouter<AppState> {
-    routing::get(get)
-}
-
-async fn get(
-    State(state): State<AppState>,
-    i: Inertia,
-    Path(number): Path<String>,
-) -> Response {
-    let repo = ShopRepository::new(state.db.clone());
-    let (order, items) = match repo.find_order(&number).await {
-        Ok(Some(order)) => order,
-        Ok(None) => return AppError::NotFound(format!("Order not found: {number}")).into_response(),
-        Err(error) => return AppError::Internal(error).into_response(),
-    };
-
-    i.render_with_ssr(
-        "shop/orders/Show",
-        serde_json::json!({
-            "order": order,
-            "items": items,
-        }),
-    )
-    .await
-}
-"#
-    .to_string()
-}
-
-fn shop_cart_ts() -> String {
-    r#"export interface CartItem {
-  product_id: number
-  quantity: number
-}
-
-const CART_KEY = 'rwfw_shop_cart'
-
-export function readCart(): CartItem[] {
-  if (typeof window === 'undefined') return []
-  try {
-    const parsed = JSON.parse(window.localStorage.getItem(CART_KEY) ?? '[]')
-    if (!Array.isArray(parsed)) return []
-    return parsed
-      .map((item) => ({
-        product_id: Number(item.product_id),
-        quantity: Number(item.quantity),
-      }))
-      .filter((item) => Number.isInteger(item.product_id) && item.quantity > 0)
-  } catch {
-    return []
-  }
-}
-
-export function writeCart(items: CartItem[]) {
-  if (typeof window === 'undefined') return
-  window.localStorage.setItem(CART_KEY, JSON.stringify(items.filter((item) => item.quantity > 0)))
-  window.dispatchEvent(new Event('rwfw-shop-cart-changed'))
-}
-
-export function addToCart(productId: number, quantity = 1) {
-  const cart = readCart()
-  const existing = cart.find((item) => item.product_id === productId)
-  if (existing) {
-    existing.quantity += quantity
-  } else {
-    cart.push({ product_id: productId, quantity })
-  }
-  writeCart(cart)
-}
-
-export function clearCart() {
-  writeCart([])
-}
-"#
-    .to_string()
-}
-
-fn shop_product_card_tsx() -> String {
-    r#"import { Link } from '@inertiajs/react'
-import { addToCart } from './cart'
-
-export interface Product {
-  id: number
-  name: string
-  slug: string
-  description: string
-  price_cents: number
-  currency: string
-  image_url: string
-  inventory: number
-  featured: boolean
-}
-
-export function formatMoney(cents: number, currency = 'USD') {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency,
-  }).format(cents / 100)
-}
-
-export default function ProductCard({ product }: { product: Product }) {
-  return (
-    <article className="group overflow-hidden rounded-[1.8rem] border border-neutral-200 bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-2xl">
-      <Link href={`/shop/products/${product.slug}`}>
-        <img
-          src={product.image_url}
-          alt=""
-          className="h-72 w-full object-cover transition duration-500 group-hover:scale-105"
-        />
-      </Link>
-      <div className="p-5">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <Link href={`/shop/products/${product.slug}`}>
-              <h3 className="text-lg font-black tracking-tight text-neutral-950 hover:text-orange-700">
-                {product.name}
-              </h3>
-            </Link>
-            <p className="mt-2 line-clamp-2 text-sm leading-6 text-neutral-600">{product.description}</p>
-          </div>
-          <p className="shrink-0 text-sm font-black text-neutral-950">
-            {formatMoney(product.price_cents, product.currency)}
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={() => addToCart(product.id)}
-          className="mt-5 w-full rounded-full bg-neutral-950 px-4 py-3 text-sm font-black text-white hover:bg-orange-700"
-        >
-          Add to cart
-        </button>
-      </div>
-    </article>
-  )
-}
-"#
-    .to_string()
-}
-
-fn shop_index_page_tsx() -> String {
-    r#"import { Link, router } from '@inertiajs/react'
-import type { FormEvent } from 'react'
-import { useState } from 'react'
-import ProductCard, { type Product } from '../components/ProductCard'
-
-interface Category {
-  id: number
-  name: string
-  slug: string
-  description: string
-}
-
-interface Props {
-  categories: Category[]
-  featured: Product[]
-  products: Product[]
-  filters: {
-    q: string
-    category: string
-  }
-}
-
-export default function ShopIndex({ categories, featured, products, filters }: Props) {
-  const [q, setQ] = useState(filters.q ?? '')
-  const hero = featured[0] ?? products[0]
-
-  function search(event: FormEvent) {
-    event.preventDefault()
-    router.get('/shop', { q, category: filters.category }, { preserveState: true })
-  }
-
-  return (
-    <main className="min-h-screen bg-[#f6f1e7] text-neutral-950">
-      <header className="mx-auto flex max-w-7xl items-center justify-between px-6 py-6">
-        <Link href="/shop" className="text-xl font-black tracking-tight">
-          RWFW Commerce
-        </Link>
-        <nav className="flex items-center gap-4 text-sm font-black">
-          <Link href="/shop">Catalog</Link>
-          <Link href="/shop/cart" className="rounded-full bg-neutral-950 px-4 py-2 text-white">
-            Cart
-          </Link>
-        </nav>
-      </header>
-
-      <section className="mx-auto grid max-w-7xl gap-6 px-6 pb-10 lg:grid-cols-[0.9fr_1.1fr]">
-        <div className="rounded-[2.5rem] bg-neutral-950 p-8 text-white md:p-12">
-          <p className="text-xs font-black uppercase tracking-[0.35em] text-orange-300">
-            Storefront example
-          </p>
-          <h1 className="mt-6 text-6xl font-black leading-[0.9] tracking-tight md:text-8xl">
-            Commerce sem Next, em Rust.
-          </h1>
-          <p className="mt-6 max-w-xl text-lg leading-8 text-neutral-300">
-            Catálogo, filtros, carrinho local e checkout falso persistido no PostgreSQL.
-          </p>
-          <form onSubmit={search} className="mt-8 flex rounded-full bg-white p-2 text-neutral-950">
-            <input
-              value={q}
-              onChange={(event) => setQ(event.target.value)}
-              placeholder="Search products"
-              className="min-w-0 flex-1 rounded-full px-4 outline-none"
-            />
-            <button className="rounded-full bg-orange-400 px-5 py-3 text-sm font-black hover:bg-orange-300">
-              Search
-            </button>
-          </form>
-        </div>
-
-        {hero && (
-          <Link
-            href={`/shop/products/${hero.slug}`}
-            className="group relative min-h-[540px] overflow-hidden rounded-[2.5rem] bg-neutral-900"
-          >
-            <img
-              src={hero.image_url}
-              alt=""
-              className="absolute inset-0 h-full w-full object-cover opacity-85 transition duration-700 group-hover:scale-105"
-            />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
-            <div className="absolute bottom-0 p-8 text-white md:p-10">
-              <p className="text-xs font-black uppercase tracking-[0.3em] text-orange-200">Featured</p>
-              <h2 className="mt-3 max-w-lg text-4xl font-black tracking-tight">{hero.name}</h2>
-              <p className="mt-3 max-w-md text-sm leading-6 text-neutral-200">{hero.description}</p>
-            </div>
-          </Link>
-        )}
-      </section>
-
-      <section className="mx-auto max-w-7xl px-6 pb-16">
-        <div className="mb-8 flex flex-wrap gap-3">
-          <Link
-            href="/shop"
-            className={`rounded-full px-4 py-2 text-sm font-black ${
-              !filters.category ? 'bg-neutral-950 text-white' : 'bg-white text-neutral-700'
-            }`}
-          >
-            All
-          </Link>
-          {categories.map((category) => (
-            <Link
-              key={category.id}
-              href={`/shop?category=${category.slug}`}
-              className={`rounded-full px-4 py-2 text-sm font-black ${
-                filters.category === category.slug ? 'bg-neutral-950 text-white' : 'bg-white text-neutral-700'
-              }`}
-            >
-              {category.name}
-            </Link>
-          ))}
-        </div>
-
-        <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-          {products.map((product) => (
-            <ProductCard key={product.id} product={product} />
-          ))}
-        </div>
-      </section>
-    </main>
-  )
-}
-"#
-    .to_string()
-}
-
-fn shop_product_show_page_tsx() -> String {
-    r#"import { Link } from '@inertiajs/react'
-import { addToCart } from '../../components/cart'
-import { formatMoney, type Product } from '../../components/ProductCard'
-
-interface Props {
-  product: Product
-}
-
-export default function ProductShow({ product }: Props) {
-  return (
-    <main className="min-h-screen bg-[#f6f1e7] text-neutral-950">
-      <header className="mx-auto flex max-w-7xl items-center justify-between px-6 py-6">
-        <Link href="/shop" className="text-xl font-black tracking-tight">
-          RWFW Commerce
-        </Link>
-        <Link href="/shop/cart" className="rounded-full bg-neutral-950 px-4 py-2 text-sm font-black text-white">
-          Cart
-        </Link>
-      </header>
-
-      <section className="mx-auto grid max-w-7xl gap-8 px-6 pb-16 lg:grid-cols-[1.1fr_0.9fr]">
-        <img
-          src={product.image_url}
-          alt=""
-          className="h-[680px] w-full rounded-[2.5rem] object-cover shadow-2xl"
-        />
-        <div className="flex flex-col justify-center rounded-[2.5rem] bg-white p-8 shadow-sm md:p-12">
-          <p className="text-xs font-black uppercase tracking-[0.35em] text-orange-700">
-            Product detail
-          </p>
-          <h1 className="mt-5 text-5xl font-black leading-tight tracking-tight">{product.name}</h1>
-          <p className="mt-5 text-2xl font-black">
-            {formatMoney(product.price_cents, product.currency)}
-          </p>
-          <p className="mt-6 text-lg leading-8 text-neutral-600">{product.description}</p>
-          <p className="mt-4 text-sm font-black text-neutral-500">{product.inventory} in stock</p>
-          <button
-            type="button"
-            onClick={() => addToCart(product.id)}
-            className="mt-8 rounded-full bg-neutral-950 px-6 py-4 text-sm font-black text-white hover:bg-orange-700"
-          >
-            Add to cart
-          </button>
-        </div>
-      </section>
-    </main>
-  )
-}
-"#
-    .to_string()
-}
-
-fn shop_cart_page_tsx() -> String {
-    r#"import { Link } from '@inertiajs/react'
-import { useEffect, useMemo, useState } from 'react'
-import { readCart, writeCart, type CartItem } from '../../components/cart'
-import { formatMoney, type Product } from '../../components/ProductCard'
-
-interface Props {
-  products: Product[]
-}
-
-export default function CartIndex({ products }: Props) {
-  const [cart, setCart] = useState<CartItem[]>([])
-
-  useEffect(() => {
-    setCart(readCart())
-  }, [])
-
-  const rows = useMemo(
-    () =>
-      cart
-        .map((item) => ({
-          item,
-          product: products.find((product) => product.id === item.product_id),
-        }))
-        .filter((row): row is { item: CartItem; product: Product } => Boolean(row.product)),
-    [cart, products],
-  )
-
-  const total = rows.reduce((sum, row) => sum + row.product.price_cents * row.item.quantity, 0)
-
-  function update(productId: number, quantity: number) {
-    const next = cart
-      .map((item) => (item.product_id === productId ? { ...item, quantity } : item))
-      .filter((item) => item.quantity > 0)
-    setCart(next)
-    writeCart(next)
-  }
-
-  return (
-    <main className="min-h-screen bg-[#f6f1e7] px-6 py-8 text-neutral-950">
-      <div className="mx-auto max-w-5xl">
-        <div className="mb-8 flex items-center justify-between">
-          <Link href="/shop" className="text-xl font-black">RWFW Commerce</Link>
-          <Link href="/shop" className="text-sm font-black text-orange-700">Continue shopping</Link>
-        </div>
-
-        <section className="rounded-[2rem] bg-white p-6 shadow-sm md:p-8">
-          <h1 className="text-4xl font-black tracking-tight">Cart</h1>
-
-          {rows.length === 0 ? (
-            <div className="mt-8 rounded-2xl border border-dashed border-neutral-300 p-10 text-neutral-500">
-              Your cart is empty.
-            </div>
-          ) : (
-            <div className="mt-8 space-y-4">
-              {rows.map(({ item, product }) => (
-                <div key={product.id} className="grid gap-4 rounded-2xl border border-neutral-200 p-4 md:grid-cols-[120px_1fr_auto] md:items-center">
-                  <img src={product.image_url} alt="" className="h-28 w-28 rounded-2xl object-cover" />
-                  <div>
-                    <h2 className="font-black">{product.name}</h2>
-                    <p className="mt-1 text-sm text-neutral-500">{formatMoney(product.price_cents, product.currency)}</p>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <input
-                      type="number"
-                      min={0}
-                      value={item.quantity}
-                      onChange={(event) => update(product.id, Number(event.target.value))}
-                      className="w-20 rounded-xl border border-neutral-300 px-3 py-2"
-                    />
-                    <p className="w-24 text-right font-black">
-                      {formatMoney(product.price_cents * item.quantity, product.currency)}
-                    </p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-
-          <div className="mt-8 flex flex-col justify-between gap-4 border-t border-neutral-200 pt-6 md:flex-row md:items-center">
-            <p className="text-2xl font-black">Total {formatMoney(total)}</p>
-            <Link
-              href="/shop/checkout"
-              className={`rounded-full px-6 py-3 text-center text-sm font-black ${
-                rows.length === 0 ? 'pointer-events-none bg-neutral-200 text-neutral-500' : 'bg-neutral-950 text-white hover:bg-orange-700'
-              }`}
-            >
-              Checkout
-            </Link>
-          </div>
-        </section>
-      </div>
-    </main>
-  )
-}
-"#
-    .to_string()
-}
-
-fn shop_checkout_page_tsx() -> String {
-    r#"import { Link, router, usePage } from '@inertiajs/react'
-import type { FormEvent } from 'react'
-import { useEffect, useMemo, useState } from 'react'
-import { clearCart, readCart, type CartItem } from '../../components/cart'
-import { formatMoney, type Product } from '../../components/ProductCard'
-
-interface Props {
-  products: Product[]
-}
-
-export default function CheckoutIndex({ products }: Props) {
-  const [cart, setCart] = useState<CartItem[]>([])
-  const [processing, setProcessing] = useState(false)
-  const [form, setForm] = useState({
-    customer_name: '',
-    customer_email: '',
-    address_line: '',
-    city: '',
-    country: 'US',
-  })
-  const { props } = usePage()
-  const errors = (props as any).errors ?? {}
-
-  useEffect(() => {
-    setCart(readCart())
-  }, [])
-
-  const rows = useMemo(
-    () =>
-      cart
-        .map((item) => ({
-          item,
-          product: products.find((product) => product.id === item.product_id),
-        }))
-        .filter((row): row is { item: CartItem; product: Product } => Boolean(row.product)),
-    [cart, products],
-  )
-  const total = rows.reduce((sum, row) => sum + row.product.price_cents * row.item.quantity, 0)
-
-  function submit(event: FormEvent) {
-    event.preventDefault()
-    setProcessing(true)
-    router.post(
-      '/shop/checkout',
-      {
-        ...form,
-        items: cart,
-      },
-      {
-        onSuccess: () => clearCart(),
-        onFinish: () => setProcessing(false),
-      },
-    )
-  }
-
-  return (
-    <main className="min-h-screen bg-[#f6f1e7] px-6 py-8 text-neutral-950">
-      <div className="mx-auto max-w-6xl">
-        <div className="mb-8 flex items-center justify-between">
-          <Link href="/shop" className="text-xl font-black">RWFW Commerce</Link>
-          <Link href="/shop/cart" className="text-sm font-black text-orange-700">Back to cart</Link>
-        </div>
-
-        <div className="grid gap-6 lg:grid-cols-[1fr_420px]">
-          <form onSubmit={submit} className="rounded-[2rem] bg-white p-8 shadow-sm">
-            <p className="text-xs font-black uppercase tracking-[0.3em] text-orange-700">Fake checkout</p>
-            <h1 className="mt-3 text-4xl font-black tracking-tight">Delivery details</h1>
-
-            <div className="mt-8 grid gap-5 md:grid-cols-2">
-              {[
-                ['customer_name', 'Name'],
-                ['customer_email', 'Email'],
-                ['address_line', 'Address'],
-                ['city', 'City'],
-                ['country', 'Country'],
-              ].map(([key, label]) => (
-                <label key={key} className={key === 'address_line' ? 'md:col-span-2' : ''}>
-                  <span className="mb-2 block text-sm font-black text-neutral-700">{label}</span>
-                  <input
-                    value={(form as any)[key]}
-                    onChange={(event) => setForm({ ...form, [key]: event.target.value })}
-                    className="w-full rounded-2xl border border-neutral-300 px-4 py-3 outline-none focus:border-neutral-950"
-                  />
-                  {errors[key] && <p className="mt-2 text-sm text-red-600">{errors[key]}</p>}
-                </label>
-              ))}
-            </div>
-
-            {errors.items && <p className="mt-5 text-sm text-red-600">{errors.items}</p>}
-
-            <button
-              type="submit"
-              disabled={processing || rows.length === 0}
-              className="mt-8 rounded-full bg-neutral-950 px-6 py-4 text-sm font-black text-white hover:bg-orange-700 disabled:opacity-50"
-            >
-              {processing ? 'Creating order...' : 'Complete fake checkout'}
-            </button>
-          </form>
-
-          <aside className="rounded-[2rem] bg-neutral-950 p-6 text-white shadow-sm">
-            <h2 className="text-2xl font-black">Order summary</h2>
-            <div className="mt-6 space-y-4">
-              {rows.map(({ item, product }) => (
-                <div key={product.id} className="flex gap-4">
-                  <img src={product.image_url} alt="" className="h-20 w-20 rounded-2xl object-cover" />
-                  <div className="flex-1">
-                    <p className="font-black">{product.name}</p>
-                    <p className="text-sm text-neutral-400">Qty {item.quantity}</p>
-                  </div>
-                  <p className="font-black">{formatMoney(product.price_cents * item.quantity, product.currency)}</p>
-                </div>
-              ))}
-            </div>
-            <div className="mt-6 border-t border-white/10 pt-6 text-2xl font-black">
-              Total {formatMoney(total)}
-            </div>
-          </aside>
-        </div>
-      </div>
-    </main>
-  )
-}
-"#
-    .to_string()
-}
-
-fn shop_order_show_page_tsx() -> String {
-    r#"import { Link } from '@inertiajs/react'
-import { formatMoney } from '../../components/ProductCard'
-
-interface Order {
-  number: string
-  customer_name: string
-  customer_email: string
-  total_cents: number
-  currency: string
-  status: string
-}
-
-interface OrderItem {
-  id: number
-  product_name: string
-  product_slug: string
-  unit_price_cents: number
-  quantity: number
-  subtotal_cents: number
-}
-
-interface Props {
-  order: Order
-  items: OrderItem[]
-}
-
-export default function OrderShow({ order, items }: Props) {
-  return (
-    <main className="min-h-screen bg-neutral-950 px-6 py-10 text-white">
-      <section className="mx-auto max-w-4xl rounded-[2.5rem] bg-white p-8 text-neutral-950 shadow-2xl md:p-12">
-        <p className="text-xs font-black uppercase tracking-[0.35em] text-orange-700">
-          Order confirmed
-        </p>
-        <h1 className="mt-4 text-5xl font-black tracking-tight">Pedido {order.number}</h1>
-        <p className="mt-4 text-neutral-600">
-          Checkout falso persistido no banco para {order.customer_name} ({order.customer_email}).
-        </p>
-
-        <div className="mt-8 space-y-4">
-          {items.map((item) => (
-            <div key={item.id} className="flex items-center justify-between rounded-2xl bg-neutral-100 p-4">
-              <div>
-                <Link href={`/shop/products/${item.product_slug}`} className="font-black hover:text-orange-700">
-                  {item.product_name}
-                </Link>
-                <p className="text-sm text-neutral-500">Qty {item.quantity}</p>
-              </div>
-              <p className="font-black">{formatMoney(item.subtotal_cents, order.currency)}</p>
-            </div>
-          ))}
-        </div>
-
-        <div className="mt-8 flex items-center justify-between border-t border-neutral-200 pt-6">
-          <span className="text-sm font-black uppercase tracking-[0.25em] text-neutral-500">{order.status}</span>
-          <span className="text-3xl font-black">{formatMoney(order.total_cents, order.currency)}</span>
-        </div>
-
-        <Link
-          href="/shop"
-          className="mt-8 inline-flex rounded-full bg-neutral-950 px-6 py-3 text-sm font-black text-white hover:bg-orange-700"
-        >
-          Back to storefront
-        </Link>
-      </section>
-    </main>
-  )
 }
 "#
     .to_string()
@@ -5287,9 +3446,10 @@ use crate::repositories::{{ name_snake }}_repo::{Create{{ name_pascal }}, {{ nam
 use rwfw_core::error::AppError;
 use std::collections::HashMap;
 
-#[derive(Debug, serde::Deserialize)]
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct Create{{ name_pascal }}Input {
-{% for field in fields %}    pub {{ field.name }}: {{ field.input_rust_type }},
+{% for field in fields %}{% if field.is_bool %}    #[serde(default, deserialize_with = "rwfw_core::forms::checkbox")]
+{% endif %}    pub {{ field.name }}: {{ field.input_rust_type }},
 {% endfor %}}
 
 pub struct Create{{ name_pascal }}Output {
@@ -5458,9 +3618,10 @@ use crate::repositories::{{ name_snake }}_repo::{Update{{ name_pascal }}, {{ nam
 use rwfw_core::error::AppError;
 use std::collections::HashMap;
 
-#[derive(Debug, serde::Deserialize)]
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct Update{{ name_pascal }}Input {
-{% for field in fields %}    pub {{ field.name }}: {{ field.input_rust_type }},
+{% for field in fields %}{% if field.is_bool %}    #[serde(default, deserialize_with = "rwfw_core::forms::checkbox")]
+{% endif %}    pub {{ field.name }}: {{ field.input_rust_type }},
 {% endfor %}}
 
 pub struct Update{{ name_pascal }}Output {
@@ -5645,651 +3806,716 @@ impl Delete{{ name_pascal }}UseCase {
 }
 
 fn scaffold_route_index_template() -> String {
-    r#"use crate::repositories::{{ name_snake }}_repo::{{ name_pascal }}Repository;
-use crate::use_cases::create_{{ name_snake }}::{Create{{ name_pascal }}Input, Create{{ name_pascal }}UseCase};
-use axum::extract::{Json, Query, State};
-use axum::response::{IntoResponse, Response};
-use axum::routing;
-use rwfw_core::app::AppState;
-use rwfw_core::auth::CurrentUser;
-use rwfw_core::error::AppError;
-use rwfw_core::inertia::Inertia;
-use serde::Deserialize;
-
-#[derive(Debug, Deserialize)]
-struct ListParams {
-    page: Option<u64>,
-    q: Option<String>,
-}
-
-pub fn route() -> axum::routing::MethodRouter<AppState> {
-    routing::get(get).post(post)
-}
-
-async fn get(
-    State(state): State<AppState>,
-    user: CurrentUser,
-    i: Inertia,
-    Query(params): Query<ListParams>,
-) -> Response {
-    if !user.can("{{ module }}.{{ table }}.view") {
-        return AppError::Forbidden("Missing permission: {{ module }}.{{ table }}.view".into()).into_response();
-    }
-
-    let per_page = 20_u64;
-    let page = params.page.unwrap_or(1).max(1);
-    let search = params.q.as_deref().map(str::trim).filter(|value| !value.is_empty());
-    let repo = {{ name_pascal }}Repository::new(state.db.clone());
-    let (items, total) = match repo.find_all(page, per_page, search).await {
-        Ok(result) => result,
-        Err(error) => return AppError::Internal(error).into_response(),
-    };
-    let total_pages = if total == 0 { 1 } else { total.div_ceil(per_page) };
-
-    i.render_with_ssr(
-        "{{ module }}/{{ table }}/Index",
-        serde_json::json!({
-            "items": items,
-            "filters": {
-                "q": search.unwrap_or("")
-            },
-            "pagination": {
-                "page": page.min(total_pages),
-                "per_page": per_page,
-                "total": total,
-                "total_pages": total_pages
-            }
-        }),
-    )
-    .await
-}
-
-async fn post(
-    State(state): State<AppState>,
-    user: CurrentUser,
-    i: Inertia,
-    Json(input): Json<Create{{ name_pascal }}Input>,
-) -> Response {
-    if !user.can("{{ module }}.{{ table }}.create") {
-        return AppError::Forbidden("Missing permission: {{ module }}.{{ table }}.create".into()).into_response();
-    }
-
-    let repo = {{ name_pascal }}Repository::new(state.db.clone());
-    let use_case = Create{{ name_pascal }}UseCase;
-
-    match use_case.execute(&repo, input).await {
-        Ok(_) => Inertia::redirect_with_success("/{{ module }}/{{ table }}", "{{ name_pascal }} created."),
-        Err(AppError::Validation(errors)) => i.redirect_back_with_errors(errors),
-        Err(error) => error.into_response(),
-    }
-}
-"#
-    .to_string()
+    super::generate::BUILTIN_ROUTE_INDEX_TEMPLATE.to_string()
 }
 
 fn scaffold_route_create_template() -> String {
-    r#"use axum::response::IntoResponse;
+    super::generate::BUILTIN_ROUTE_CREATE_TEMPLATE.to_string()
+}
+
+fn scaffold_route_edit_template() -> String {
+    super::generate::BUILTIN_ROUTE_EDIT_TEMPLATE.to_string()
+}
+
+fn scaffold_route_item_template() -> String {
+    super::generate::BUILTIN_ROUTE_ITEM_TEMPLATE.to_string()
+}
+
+fn scaffold_page_index_template() -> String {
+    super::generate::BUILTIN_PAGE_INDEX_TEMPLATE.to_string()
+}
+
+fn scaffold_form_template() -> String {
+    super::generate::BUILTIN_FORM_TEMPLATE.to_string()
+}
+
+fn scaffold_page_create_template() -> String {
+    super::generate::BUILTIN_PAGE_CREATE_TEMPLATE.to_string()
+}
+
+fn scaffold_page_edit_template() -> String {
+    super::generate::BUILTIN_PAGE_EDIT_TEMPLATE.to_string()
+}
+
+fn scaffold_page_show_template() -> String {
+    super::generate::BUILTIN_PAGE_SHOW_TEMPLATE.to_string()
+}
+
+// ---------------------------------------------------------------------------
+// Ecommerce example — Hotwire `View` routes (replace the Inertia handlers) and
+// `.html.j2` MiniJinja pages (replace the `.tsx` pages). All server-rendered.
+// ---------------------------------------------------------------------------
+
+fn shop_index_route_rs() -> String {
+    r#"use crate::repositories::shop_repo::ShopRepository;
+use axum::extract::{Query, State};
+use axum::response::{IntoResponse, Response};
 use axum::routing;
 use rwfw_core::app::AppState;
-use rwfw_core::auth::CurrentUser;
 use rwfw_core::error::AppError;
-use rwfw_core::inertia::Inertia;
+use rwfw_core::view::View;
+use serde::Deserialize;
+
+#[derive(Debug, Deserialize)]
+struct ProductFilters {
+    q: Option<String>,
+    category: Option<String>,
+}
 
 pub fn route() -> axum::routing::MethodRouter<AppState> {
     routing::get(get)
 }
 
-async fn get(user: CurrentUser, i: Inertia) -> impl IntoResponse {
-    if !user.can("{{ module }}.{{ table }}.create") {
-        return AppError::Forbidden("Missing permission: {{ module }}.{{ table }}.create".into()).into_response();
-    }
-
-    i.render_with_ssr("{{ module }}/{{ table }}/Create", serde_json::json!({}))
-        .await
-}
-"#
-    .to_string()
-}
-
-fn scaffold_route_edit_template() -> String {
-    r#"use crate::repositories::{{ name_snake }}_repo::{{ name_pascal }}Repository;
-use crate::use_cases::update_{{ name_snake }}::{Update{{ name_pascal }}Input, Update{{ name_pascal }}UseCase};
-use axum::extract::{Json, Path, State};
-use axum::response::{IntoResponse, Response};
-use axum::routing;
-use rwfw_core::app::AppState;
-use rwfw_core::auth::CurrentUser;
-use rwfw_core::error::AppError;
-use rwfw_core::inertia::Inertia;
-
-pub fn route() -> axum::routing::MethodRouter<AppState> {
-    routing::get(get).put(put)
-}
-
 async fn get(
     State(state): State<AppState>,
-    user: CurrentUser,
-    i: Inertia,
-    Path(id): Path<i32>,
+    v: View,
+    Query(filters): Query<ProductFilters>,
 ) -> Response {
-    if !user.can("{{ module }}.{{ table }}.update") {
-        return AppError::Forbidden("Missing permission: {{ module }}.{{ table }}.update".into()).into_response();
-    }
-
-    let repo = {{ name_pascal }}Repository::new(state.db.clone());
-    let item = match repo.find_by_id(id).await {
-        Ok(Some(item)) => item,
-        Ok(None) => return AppError::NotFound(format!("{{ name_pascal }} not found: {id}")).into_response(),
+    let repo = ShopRepository::new(state.db.clone());
+    let categories = match repo.categories().await {
+        Ok(categories) => categories,
+        Err(error) => return AppError::Internal(error).into_response(),
+    };
+    let featured = match repo.featured_products().await {
+        Ok(products) => products,
+        Err(error) => return AppError::Internal(error).into_response(),
+    };
+    let products = match repo
+        .products(filters.q.as_deref(), filters.category.as_deref())
+        .await
+    {
+        Ok(products) => products,
         Err(error) => return AppError::Internal(error).into_response(),
     };
 
-    i.render_with_ssr(
-        "{{ module }}/{{ table }}/Edit",
+    v.render(
+        "shop/index",
         serde_json::json!({
-            "item": item
+            "categories": categories,
+            "featured": featured,
+            "products": products,
+            "filters": {
+                "q": filters.q.unwrap_or_default(),
+                "category": filters.category.unwrap_or_default(),
+            }
         }),
     )
-    .await
-}
-
-async fn put(
-    State(state): State<AppState>,
-    user: CurrentUser,
-    i: Inertia,
-    Path(id): Path<i32>,
-    Json(input): Json<Update{{ name_pascal }}Input>,
-) -> Response {
-    if !user.can("{{ module }}.{{ table }}.update") {
-        return AppError::Forbidden("Missing permission: {{ module }}.{{ table }}.update".into()).into_response();
-    }
-
-    let repo = {{ name_pascal }}Repository::new(state.db.clone());
-    let use_case = Update{{ name_pascal }}UseCase;
-
-    match use_case.execute(&repo, id, input).await {
-        Ok(_) => Inertia::redirect_with_success("/{{ module }}/{{ table }}", "{{ name_pascal }} updated."),
-        Err(AppError::Validation(errors)) => i.redirect_back_with_errors(errors),
-        Err(error) => error.into_response(),
-    }
 }
 "#
     .to_string()
 }
 
-fn scaffold_route_item_template() -> String {
-    r#"use crate::repositories::{{ name_snake }}_repo::{{ name_pascal }}Repository;
-use crate::use_cases::delete_{{ name_snake }}::Delete{{ name_pascal }}UseCase;
+fn shop_product_show_route_rs() -> String {
+    r#"use crate::repositories::shop_repo::ShopRepository;
 use axum::extract::{Path, State};
 use axum::response::{IntoResponse, Response};
 use axum::routing;
 use rwfw_core::app::AppState;
-use rwfw_core::auth::CurrentUser;
 use rwfw_core::error::AppError;
-use rwfw_core::inertia::Inertia;
+use rwfw_core::view::View;
 
 pub fn route() -> axum::routing::MethodRouter<AppState> {
-    routing::get(get).delete(delete)
+    routing::get(get)
 }
 
 async fn get(
     State(state): State<AppState>,
-    user: CurrentUser,
-    i: Inertia,
-    Path(id): Path<i32>,
+    v: View,
+    Path(slug): Path<String>,
 ) -> Response {
-    if !user.can("{{ module }}.{{ table }}.view") {
-        return AppError::Forbidden("Missing permission: {{ module }}.{{ table }}.view".into()).into_response();
-    }
-
-    let repo = {{ name_pascal }}Repository::new(state.db.clone());
-    let item = match repo.find_by_id(id).await {
-        Ok(Some(item)) => item,
-        Ok(None) => return AppError::NotFound(format!("{{ name_pascal }} not found: {id}")).into_response(),
+    let repo = ShopRepository::new(state.db.clone());
+    let product = match repo.find_product_by_slug(&slug).await {
+        Ok(Some(product)) => product,
+        Ok(None) => return AppError::NotFound(format!("Product not found: {slug}")).into_response(),
         Err(error) => return AppError::Internal(error).into_response(),
     };
 
-    i.render_with_ssr(
-        "{{ module }}/{{ table }}/Show",
+    v.render(
+        "shop/products/show",
         serde_json::json!({
-            "item": item
+            "product": product,
         }),
     )
-    .await
+}
+"#
+    .to_string()
 }
 
-async fn delete(State(state): State<AppState>, user: CurrentUser, Path(id): Path<i32>) -> Response {
-    if !user.can("{{ module }}.{{ table }}.delete") {
-        return AppError::Forbidden("Missing permission: {{ module }}.{{ table }}.delete".into()).into_response();
+fn shop_cart_route_rs() -> String {
+    r#"use crate::cart;
+use crate::repositories::shop_repo::ShopRepository;
+use axum::extract::State;
+use axum::http::HeaderMap;
+use axum::response::{IntoResponse, Response};
+use axum::routing;
+use rwfw_core::app::AppState;
+use rwfw_core::error::AppError;
+use rwfw_core::view::View;
+
+pub fn route() -> axum::routing::MethodRouter<AppState> {
+    routing::get(get)
+}
+
+async fn get(State(state): State<AppState>, headers: HeaderMap, v: View) -> Response {
+    let cart = cart::parse(&headers);
+    let repo = ShopRepository::new(state.db.clone());
+    let ids = cart.keys().copied().collect::<Vec<_>>();
+    let products = match repo.find_products_by_ids(&ids).await {
+        Ok(products) => products,
+        Err(error) => return AppError::Internal(error).into_response(),
+    };
+
+    let mut lines = Vec::new();
+    let mut total_cents = 0;
+    let mut currency = "USD".to_string();
+    for product in products {
+        let quantity = cart.get(&product.id).copied().unwrap_or(0);
+        if quantity <= 0 {
+            continue;
+        }
+        let subtotal = product.price_cents * quantity;
+        total_cents += subtotal;
+        currency = product.currency.clone();
+        lines.push(serde_json::json!({
+            "product": product,
+            "quantity": quantity,
+            "subtotal_cents": subtotal,
+        }));
     }
 
-    let repo = {{ name_pascal }}Repository::new(state.db.clone());
-    let use_case = Delete{{ name_pascal }}UseCase;
+    v.render(
+        "shop/cart/index",
+        serde_json::json!({
+            "lines": lines,
+            "total_cents": total_cents,
+            "currency": currency,
+        }),
+    )
+}
+"#
+    .to_string()
+}
 
-    match use_case.execute(&repo, id).await {
-        Ok(()) => Inertia::redirect_with_success("/{{ module }}/{{ table }}", "{{ name_pascal }} deleted."),
+fn shop_cart_add_route_rs() -> String {
+    r#"use crate::cart;
+use axum::extract::Form;
+use axum::http::HeaderMap;
+use axum::response::{IntoResponse, Redirect, Response};
+use axum::routing;
+use rwfw_core::app::AppState;
+use serde::Deserialize;
+
+#[derive(Debug, Deserialize)]
+struct AddToCartInput {
+    product_id: i32,
+    #[serde(default = "default_quantity")]
+    quantity: i32,
+}
+
+fn default_quantity() -> i32 {
+    1
+}
+
+pub fn route() -> axum::routing::MethodRouter<AppState> {
+    routing::post(post)
+}
+
+async fn post(headers: HeaderMap, Form(input): Form<AddToCartInput>) -> Response {
+    let cart = cart::parse(&headers);
+    let cart = cart::add(cart, input.product_id, input.quantity);
+
+    let mut response = Redirect::to("/shop/cart").into_response();
+    cart::apply(&mut response, &cart);
+    response
+}
+"#
+    .to_string()
+}
+
+fn shop_cart_update_route_rs() -> String {
+    r#"use crate::cart;
+use axum::extract::Form;
+use axum::http::HeaderMap;
+use axum::response::{IntoResponse, Redirect, Response};
+use axum::routing;
+use rwfw_core::app::AppState;
+use serde::Deserialize;
+
+#[derive(Debug, Deserialize)]
+struct UpdateCartInput {
+    product_id: i32,
+    quantity: i32,
+}
+
+pub fn route() -> axum::routing::MethodRouter<AppState> {
+    routing::post(post)
+}
+
+async fn post(headers: HeaderMap, Form(input): Form<UpdateCartInput>) -> Response {
+    let cart = cart::parse(&headers);
+    let cart = cart::set_quantity(cart, input.product_id, input.quantity);
+
+    let mut response = Redirect::to("/shop/cart").into_response();
+    cart::apply(&mut response, &cart);
+    response
+}
+"#
+    .to_string()
+}
+
+fn shop_checkout_route_rs() -> String {
+    r#"use crate::cart;
+use crate::repositories::shop_repo::ShopRepository;
+use crate::use_cases::checkout::{CheckoutInput, CheckoutUseCase};
+use axum::extract::{Form, State};
+use axum::http::{HeaderMap, StatusCode};
+use axum::response::{IntoResponse, Response};
+use axum::routing;
+use rwfw_core::app::AppState;
+use rwfw_core::error::AppError;
+use rwfw_core::inertia::Inertia;
+use rwfw_core::view::View;
+
+pub fn route() -> axum::routing::MethodRouter<AppState> {
+    routing::get(get).post(post)
+}
+
+async fn get(State(state): State<AppState>, headers: HeaderMap, v: View) -> Response {
+    let cart = cart::parse(&headers);
+    let repo = ShopRepository::new(state.db.clone());
+    let ids = cart.keys().copied().collect::<Vec<_>>();
+    let products = match repo.find_products_by_ids(&ids).await {
+        Ok(products) => products,
+        Err(error) => return AppError::Internal(error).into_response(),
+    };
+
+    let (lines, total_cents, currency) = summarize(&cart, products);
+
+    v.render(
+        "shop/checkout/index",
+        serde_json::json!({
+            "lines": lines,
+            "total_cents": total_cents,
+            "currency": currency,
+            "old": serde_json::Value::Null,
+        }),
+    )
+}
+
+async fn post(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    v: View,
+    Form(input): Form<CheckoutInput>,
+) -> Response {
+    let cart = cart::parse(&headers);
+    let repo = ShopRepository::new(state.db.clone());
+    let use_case = CheckoutUseCase;
+
+    let old = serde_json::json!({
+        "customer_name": input.customer_name,
+        "customer_email": input.customer_email,
+        "address_line": input.address_line,
+        "city": input.city,
+        "country": input.country,
+    });
+
+    match use_case.execute(&repo, input, &cart).await {
+        Ok(order) => {
+            // Clear the cart cookie and redirect to the confirmation page.
+            let mut response = Inertia::redirect_with_success(
+                &format!("/shop/orders/{}", order.number),
+                "Fake checkout completed",
+            );
+            cart::apply(&mut response, &std::collections::BTreeMap::new());
+            response
+        }
+        Err(AppError::Validation(errors)) => {
+            let ids = cart.keys().copied().collect::<Vec<_>>();
+            let products = match repo.find_products_by_ids(&ids).await {
+                Ok(products) => products,
+                Err(error) => return AppError::Internal(error).into_response(),
+            };
+            let (lines, total_cents, currency) = summarize(&cart, products);
+            v.render_status(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "shop/checkout/index",
+                serde_json::json!({
+                    "lines": lines,
+                    "total_cents": total_cents,
+                    "currency": currency,
+                    "old": old,
+                    "errors": rwfw_core::validation::first_messages(errors),
+                }),
+            )
+        }
+        Err(AppError::BadRequest(message)) => {
+            Inertia::redirect_with_error("/shop/cart", message)
+        }
         Err(error) => error.into_response(),
     }
 }
-"#
-    .to_string()
-}
 
-fn scaffold_page_index_template() -> String {
-    r#"import type { FormEvent } from 'react'
-import { Link, router } from '@inertiajs/react'
-import AppLayout from '@app/layouts/AppLayout'
-
-interface Pagination {
-  page: number
-  per_page: number
-  total: number
-  total_pages: number
-}
-
-interface Props {
-  items: Array<Record<string, unknown>>
-  pagination: Pagination
-  filters?: {
-    q?: string
-  }
-}
-
-function pageHref(page: number, q?: string) {
-  const params = new URLSearchParams()
-  if (q) params.set('q', q)
-  if (page > 1) params.set('page', String(page))
-  const query = params.toString()
-  return query ? `/{{ module }}/{{ table }}?${query}` : '/{{ module }}/{{ table }}'
-}
-
-export default function {{ name_pascal }}Index({ items, pagination, filters = {} }: Props) {
-  const q = filters.q ?? ''
-  const canGoBack = pagination.page > 1
-  const canGoForward = pagination.page < pagination.total_pages
-
-  function submitSearch(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    const form = new FormData(event.currentTarget)
-    const q = String(form.get('q') ?? '').trim()
-    const data = q ? { q } : {}
-    router.get('/{{ module }}/{{ table }}', data, { preserveState: true, replace: true })
-  }
-
-  return (
-    <AppLayout>
-      <div className="max-w-5xl">
-        <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">{{ table }}</p>
-            <h1 className="mt-2 text-3xl font-bold text-gray-900">{{ name_pascal }}</h1>
-          </div>
-          <Link
-            href="/{{ module }}/{{ table }}/create"
-            className="rounded-xl bg-slate-950 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
-          >
-            New {{ name_pascal }}
-          </Link>
-        </div>
-
-        <form onSubmit={submitSearch} className="mb-4 flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:flex-row">
-          <input
-            name="q"
-            type="search"
-            defaultValue={q}
-            placeholder="Search {{ table }}..."
-            className="min-w-0 flex-1 rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-950"
-          />
-          <div className="flex gap-2">
-            <button
-              type="submit"
-              className="rounded-xl bg-slate-950 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
-            >
-              Search
-            </button>
-            {q ? (
-              <Link
-                href="/{{ module }}/{{ table }}"
-                className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-              >
-                Clear
-              </Link>
-            ) : null}
-          </div>
-        </form>
-
-        <div className="overflow-hidden rounded-lg border bg-white">
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50">
-              <tr>
-{% for field in fields %}                <th className="px-4 py-2 text-left">{{ field.title }}</th>
-{% endfor %}                <th className="px-4 py-2 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.length === 0 && (
-                <tr>
-                  <td className="px-4 py-6 text-gray-500" colSpan={ {{ fields_colspan }} }>
-                    No records yet.
-                  </td>
-                </tr>
-              )}
-              {items.map((item, index) => (
-                <tr key={index} className="border-t">
-{% for field in fields %}                  <td className="px-4 py-2">{String(item['{{ field.name }}'] ?? '')}</td>
-{% endfor %}                  <td className="px-4 py-2 text-right">
-                    {item['id'] ? (
-                      <div className="flex justify-end gap-3">
-                      <Link
-                        href={`/{{ module }}/{{ table }}/${String(item['id'])}`}
-                        className="text-sm font-semibold text-slate-700 hover:text-slate-950"
-                      >
-                        View
-                      </Link>
-                      <Link
-                        href={`/{{ module }}/{{ table }}/${String(item['id'])}/edit`}
-                        className="text-sm font-semibold text-slate-700 hover:text-slate-950"
-                      >
-                        Edit
-                      </Link>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (window.confirm('Delete this {{ name_pascal }}?')) {
-                            router.delete('/{{ module }}/{{ table }}/' + String(item['id']))
-                          }
-                        }}
-                        className="text-sm font-semibold text-red-600 hover:text-red-700"
-                      >
-                        Delete
-                      </button>
-                      </div>
-                    ) : null}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-
-        <div className="mt-4 flex flex-col gap-3 text-sm text-slate-600 sm:flex-row sm:items-center sm:justify-between">
-          <p>
-            Showing {items.length} of {pagination.total} records
-          </p>
-          <div className="flex items-center gap-2">
-            {canGoBack ? (
-              <Link
-                href={pageHref(pagination.page - 1, q)}
-                className="rounded-xl border border-slate-300 px-3 py-2 font-semibold text-slate-700 hover:bg-slate-50"
-              >
-                Previous
-              </Link>
-            ) : (
-              <span className="rounded-xl border border-slate-200 px-3 py-2 font-semibold text-slate-300">
-                Previous
-              </span>
-            )}
-            <span>
-              Page {pagination.page} of {pagination.total_pages}
-            </span>
-            {canGoForward ? (
-              <Link
-                href={pageHref(pagination.page + 1, q)}
-                className="rounded-xl border border-slate-300 px-3 py-2 font-semibold text-slate-700 hover:bg-slate-50"
-              >
-                Next
-              </Link>
-            ) : (
-              <span className="rounded-xl border border-slate-200 px-3 py-2 font-semibold text-slate-300">
-                Next
-              </span>
-            )}
-          </div>
-        </div>
-      </div>
-    </AppLayout>
-  )
+fn summarize(
+    cart: &std::collections::BTreeMap<i32, i32>,
+    products: Vec<crate::models::product::Model>,
+) -> (Vec<serde_json::Value>, i32, String) {
+    let mut lines = Vec::new();
+    let mut total_cents = 0;
+    let mut currency = "USD".to_string();
+    for product in products {
+        let quantity = cart.get(&product.id).copied().unwrap_or(0);
+        if quantity <= 0 {
+            continue;
+        }
+        let subtotal = product.price_cents * quantity;
+        total_cents += subtotal;
+        currency = product.currency.clone();
+        lines.push(serde_json::json!({
+            "product": product,
+            "quantity": quantity,
+            "subtotal_cents": subtotal,
+        }));
+    }
+    (lines, total_cents, currency)
 }
 "#
     .to_string()
 }
 
-fn scaffold_form_template() -> String {
-    r#"import type { FormEvent } from 'react'
-import { Link } from '@inertiajs/react'
+fn shop_order_show_route_rs() -> String {
+    r#"use crate::repositories::shop_repo::ShopRepository;
+use axum::extract::{Path, State};
+use axum::response::{IntoResponse, Response};
+use axum::routing;
+use rwfw_core::app::AppState;
+use rwfw_core::error::AppError;
+use rwfw_core::view::View;
 
-type FormData = Record<string, string | boolean>
-
-interface Props {
-  data: FormData
-  setData: (field: string, value: string | boolean) => void
-  processing: boolean
-  errors: Record<string, string | undefined>
-  submitLabel: string
-  cancelHref: string
-  onSubmit: (event: FormEvent<HTMLFormElement>) => void
+pub fn route() -> axum::routing::MethodRouter<AppState> {
+    routing::get(get)
 }
 
-export default function {{ name_pascal }}Form({
-  data,
-  setData,
-  processing,
-  errors,
-  submitLabel,
-  cancelHref,
-  onSubmit,
-}: Props) {
-  return (
-    <form onSubmit={onSubmit} className="space-y-5 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-{% for field in fields %}{% if field.is_bool %}      <label className="flex items-center gap-3 rounded-xl border border-slate-200 px-4 py-3">
-        <input
-          id="{{ field.name }}"
-          type="checkbox"
-          checked={Boolean(data['{{ field.name }}'])}
-          onChange={(event) => setData('{{ field.name }}', event.target.checked)}
-          className="h-4 w-4 rounded border-slate-300 text-slate-950 focus:ring-slate-950"
-        />
-        <span className="text-sm font-medium text-slate-800">
-          {{ field.title }}{% if field.optional %} <span className="text-xs font-normal text-slate-500">(optional)</span>{% endif %}
-        </span>
-      </label>
-      {errors['{{ field.name }}'] && <p className="text-sm text-red-600">{errors['{{ field.name }}']}</p>}
-{% else %}      <div>
-        <label htmlFor="{{ field.name }}" className="mb-1 block text-sm font-medium text-slate-700">
-          {{ field.title }}{% if field.optional %} <span className="text-xs font-normal text-slate-500">(optional)</span>{% endif %}
-        </label>
-{% if field.is_text %}        <textarea
-          id="{{ field.name }}"
-          value={String(data['{{ field.name }}'] ?? '')}
-          onChange={(event) => setData('{{ field.name }}', event.target.value)}
-          rows={6}
-          className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-950"
-        />
-{% else %}        <input
-          id="{{ field.name }}"
-          type="{{ field.input_type }}"
-{% if field.has_input_step %}          step="{{ field.input_step }}"
-{% endif %}          value={String(data['{{ field.name }}'] ?? '')}
-          onChange={(event) => setData('{{ field.name }}', event.target.value)}
-          className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-950"
-        />
-{% endif %}        {errors['{{ field.name }}'] && <p className="mt-1 text-sm text-red-600">{errors['{{ field.name }}']}</p>}
+async fn get(
+    State(state): State<AppState>,
+    v: View,
+    Path(number): Path<String>,
+) -> Response {
+    let repo = ShopRepository::new(state.db.clone());
+    let (order, items) = match repo.find_order(&number).await {
+        Ok(Some(order)) => order,
+        Ok(None) => return AppError::NotFound(format!("Order not found: {number}")).into_response(),
+        Err(error) => return AppError::Internal(error).into_response(),
+    };
+
+    v.render(
+        "shop/orders/show",
+        serde_json::json!({
+            "order": order,
+            "items": items,
+        }),
+    )
+}
+"#
+    .to_string()
+}
+
+fn shop_index_page_template() -> String {
+    r#"{% extends "layouts/app.html.j2" %}
+{% block title %}Shop{% endblock %}
+{% block content %}
+<div class="max-w-5xl">
+  <div class="flex justify-between items-center mb-8">
+    <h1 class="text-3xl font-bold">Shop</h1>
+    <a href="/shop/cart" class="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200">View cart</a>
+  </div>
+
+  <form method="get" action="/shop" class="mb-8 flex flex-wrap gap-3 items-end">
+    <div class="flex-1 min-w-[200px]">
+      <label for="q" class="block text-sm font-medium text-gray-700">Search</label>
+      <input id="q" name="q" type="search" value="{{ filters.q }}" placeholder="Search products"
+             class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500">
+    </div>
+    <div>
+      <label for="category" class="block text-sm font-medium text-gray-700">Category</label>
+      <select id="category" name="category"
+              class="mt-1 block rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500">
+        <option value="">All categories</option>
+        {% for category in categories %}
+        <option value="{{ category.slug }}" {{ 'selected' if filters.category == category.slug }}>{{ category.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <button type="submit" class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">Filter</button>
+    {% if filters.q or filters.category %}
+    <a href="/shop" class="px-4 py-2 text-sm text-gray-600 hover:underline">Reset</a>
+    {% endif %}
+  </form>
+
+  {% if not filters.q and not filters.category and featured | length > 0 %}
+  <section class="mb-10">
+    <h2 class="text-xl font-semibold mb-4">Featured</h2>
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+      {% for product in featured %}
+      {% include "shop/_product_card.html.j2" %}
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  <section>
+    <h2 class="text-xl font-semibold mb-4">All products</h2>
+    {% if products | length == 0 %}
+      <p class="text-gray-500">No products match your filters.</p>
+    {% else %}
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+      {% for product in products %}
+      {% include "shop/_product_card.html.j2" %}
+      {% endfor %}
+    </div>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}
+"#
+    .to_string()
+}
+
+fn shop_product_card_template() -> String {
+    r#"<article class="flex flex-col bg-white rounded-lg shadow-sm border overflow-hidden">
+  <a href="/shop/products/{{ product.slug }}" class="block">
+    <img src="{{ product.image_url }}" alt="{{ product.name }}" class="h-48 w-full object-cover">
+  </a>
+  <div class="flex flex-1 flex-col p-4">
+    <a href="/shop/products/{{ product.slug }}">
+      <h3 class="text-lg font-semibold hover:text-blue-600 transition-colors">{{ product.name }}</h3>
+    </a>
+    <p class="mt-1 text-sm text-gray-500 line-clamp-2 flex-1">{{ product.description }}</p>
+    <div class="mt-3 flex items-center justify-between">
+      <span class="text-lg font-bold">{{ "%.2f" | format(product.price_cents / 100) }} {{ product.currency }}</span>
+      <form method="post" action="/shop/cart/add">
+        <input type="hidden" name="_csrf" value="{{ csrf_token }}">
+        <input type="hidden" name="product_id" value="{{ product.id }}">
+        <input type="hidden" name="quantity" value="1">
+        <button type="submit" data-turbo-submits-with="Adding..."
+                class="px-3 py-1.5 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700 disabled:opacity-50">Add to cart</button>
+      </form>
+    </div>
+  </div>
+</article>
+"#
+    .to_string()
+}
+
+fn shop_product_show_page_template() -> String {
+    r#"{% extends "layouts/app.html.j2" %}
+{% block title %}{{ product.name }}{% endblock %}
+{% block content %}
+<div class="max-w-4xl">
+  <div class="mb-6">
+    <a href="/shop" class="text-blue-600 hover:underline text-sm">&larr; Back to shop</a>
+  </div>
+
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-8 bg-white rounded-lg shadow-sm border p-8">
+    <img src="{{ product.image_url }}" alt="{{ product.name }}" class="w-full rounded-lg object-cover">
+    <div class="flex flex-col">
+      <h1 class="text-3xl font-bold mb-4">{{ product.name }}</h1>
+      <p class="text-2xl font-semibold mb-4">{{ "%.2f" | format(product.price_cents / 100) }} {{ product.currency }}</p>
+      <p class="text-gray-600 mb-6">{{ product.description }}</p>
+      <p class="text-sm text-gray-400 mb-6">
+        {% if product.inventory > 0 %}{{ product.inventory }} in stock{% else %}Out of stock{% endif %}
+      </p>
+      {% if product.inventory > 0 %}
+      <form method="post" action="/shop/cart/add" class="flex items-end gap-4">
+        <input type="hidden" name="_csrf" value="{{ csrf_token }}">
+        <input type="hidden" name="product_id" value="{{ product.id }}">
+        <div>
+          <label for="quantity" class="block text-sm font-medium text-gray-700">Quantity</label>
+          <input id="quantity" name="quantity" type="number" min="1" max="20" value="1"
+                 class="mt-1 block w-24 rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500">
+        </div>
+        <button type="submit" data-turbo-submits-with="Adding..."
+                class="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50">Add to cart</button>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}
+"#
+    .to_string()
+}
+
+fn shop_cart_page_template() -> String {
+    r#"{% extends "layouts/app.html.j2" %}
+{% block title %}Cart{% endblock %}
+{% block content %}
+<div class="max-w-4xl">
+  <div class="flex justify-between items-center mb-8">
+    <h1 class="text-3xl font-bold">Your cart</h1>
+    <a href="/shop" class="text-blue-600 hover:underline text-sm">Continue shopping</a>
+  </div>
+
+  {% if lines | length == 0 %}
+    <p class="text-gray-500">Your cart is empty. <a href="/shop" class="text-blue-600 hover:underline">Browse products</a>.</p>
+  {% else %}
+  <div class="overflow-hidden rounded-lg border bg-white shadow-sm">
+    <table class="min-w-full divide-y divide-gray-200">
+      <thead class="bg-gray-50">
+        <tr>
+          <th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Product</th>
+          <th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Price</th>
+          <th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Quantity</th>
+          <th class="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">Subtotal</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-gray-100">
+        {% for line in lines %}
+        <tr>
+          <td class="px-4 py-3">
+            <a href="/shop/products/{{ line.product.slug }}" class="font-medium text-gray-900 hover:text-blue-600">{{ line.product.name }}</a>
+          </td>
+          <td class="px-4 py-3 text-sm text-gray-500">{{ "%.2f" | format(line.product.price_cents / 100) }} {{ line.product.currency }}</td>
+          <td class="px-4 py-3">
+            <form method="post" action="/shop/cart/update" class="flex items-center gap-2">
+              <input type="hidden" name="_csrf" value="{{ csrf_token }}">
+              <input type="hidden" name="product_id" value="{{ line.product.id }}">
+              <input name="quantity" type="number" min="0" max="20" value="{{ line.quantity }}"
+                     class="w-20 rounded-md border border-gray-300 px-2 py-1 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500">
+              <button type="submit" class="text-sm text-blue-600 hover:underline">Update</button>
+            </form>
+          </td>
+          <td class="px-4 py-3 text-right text-sm text-gray-900">{{ "%.2f" | format(line.subtotal_cents / 100) }} {{ currency }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+      <tfoot class="bg-gray-50">
+        <tr>
+          <td colspan="3" class="px-4 py-3 text-right font-semibold">Total</td>
+          <td class="px-4 py-3 text-right font-bold">{{ "%.2f" | format(total_cents / 100) }} {{ currency }}</td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+
+  <div class="mt-6 flex justify-end">
+    <a href="/shop/checkout" class="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">Proceed to checkout</a>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
+"#
+    .to_string()
+}
+
+fn shop_checkout_page_template() -> String {
+    r#"{% extends "layouts/app.html.j2" %}
+{% block title %}Checkout{% endblock %}
+{% block content %}
+<div class="max-w-4xl">
+  <div class="mb-6">
+    <a href="/shop/cart" class="text-blue-600 hover:underline text-sm">&larr; Back to cart</a>
+  </div>
+  <h1 class="text-3xl font-bold mb-8">Checkout</h1>
+
+  {% if lines | length == 0 %}
+    <p class="text-gray-500">Your cart is empty. <a href="/shop" class="text-blue-600 hover:underline">Browse products</a>.</p>
+  {% else %}
+  <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+    <form method="post" action="/shop/checkout" class="md:col-span-2 bg-white rounded-lg shadow-sm border p-8 space-y-6">
+      <input type="hidden" name="_csrf" value="{{ csrf_token }}">
+      <x-field name="customer_name" label="Full name" :value="old.customer_name | default('')" />
+      <x-field name="customer_email" label="Email" type="email" :value="old.customer_email | default('')" />
+      <x-field name="address_line" label="Address" :value="old.address_line | default('')" />
+      <div class="grid grid-cols-2 gap-4">
+        <x-field name="city" label="City" :value="old.city | default('')" />
+        <x-field name="country" label="Country" :value="old.country | default('')" />
       </div>
-{% endif %}{% endfor %}      <div className="flex items-center gap-3 pt-2">
-        <button
-          type="submit"
-          disabled={processing}
-          className="rounded-xl bg-slate-950 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
-        >
-          {processing ? 'Saving...' : submitLabel}
-        </button>
-        <Link
-          href={cancelHref}
-          className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-        >
-          Cancel
-        </Link>
-      </div>
+      {% if errors.items %}<p class="text-sm text-red-600">{{ errors.items }}</p>{% endif %}
+      <button type="submit" data-turbo-submits-with="Placing order..."
+              class="w-full px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50">Place order (fake)</button>
     </form>
-  )
-}
+
+    <aside class="bg-white rounded-lg shadow-sm border p-6 h-fit">
+      <h2 class="text-lg font-semibold mb-4">Order summary</h2>
+      <ul class="space-y-2 text-sm">
+        {% for line in lines %}
+        <li class="flex justify-between">
+          <span>{{ line.quantity }} &times; {{ line.product.name }}</span>
+          <span>{{ "%.2f" | format(line.subtotal_cents / 100) }}</span>
+        </li>
+        {% endfor %}
+      </ul>
+      <div class="mt-4 border-t pt-4 flex justify-between font-bold">
+        <span>Total</span>
+        <span>{{ "%.2f" | format(total_cents / 100) }} {{ currency }}</span>
+      </div>
+    </aside>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
 "#
     .to_string()
 }
 
-fn scaffold_page_create_template() -> String {
-    r#"import type { FormEvent } from 'react'
-import { useForm } from '@inertiajs/react'
-import AppLayout from '@app/layouts/AppLayout'
-import {{ name_pascal }}Form from './Form'
+fn shop_order_show_page_template() -> String {
+    r#"{% extends "layouts/app.html.j2" %}
+{% block title %}Order {{ order.number }}{% endblock %}
+{% block content %}
+<div class="max-w-3xl">
+  <div class="mb-6">
+    <a href="/shop" class="text-blue-600 hover:underline text-sm">&larr; Back to shop</a>
+  </div>
 
-type FormData = Record<string, string | boolean>
+  <div class="bg-white rounded-lg shadow-sm border p-8">
+    <div class="mb-6">
+      <p class="text-sm uppercase tracking-wider text-green-600 font-semibold">Order confirmed</p>
+      <h1 class="text-3xl font-bold mt-1">Order {{ order.number }}</h1>
+      <p class="mt-2 text-gray-500">Thanks, {{ order.customer_name }}. A confirmation was sent to {{ order.customer_email }}.</p>
+    </div>
 
-export default function {{ name_pascal }}Create() {
-  const { data, setData, post, processing, errors } = useForm({
-{% for field in fields %}    '{{ field.name }}': {% if field.is_bool %}false{% else %}''{% endif %},
-{% endfor %}  })
-  const formData = data as FormData
-  const setFormData = setData as (field: string, value: string | boolean) => void
-  const formErrors = errors as Record<string, string | undefined>
-
-  function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    post('/{{ module }}/{{ table }}')
-  }
-
-  return (
-    <AppLayout>
-      <div className="max-w-3xl">
-        <div className="mb-8">
-          <p className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">{{ table }}</p>
-          <h1 className="mt-2 text-3xl font-bold text-slate-950">New {{ name_pascal }}</h1>
-        </div>
-        <{{ name_pascal }}Form
-          data={formData}
-          setData={setFormData}
-          processing={processing}
-          errors={formErrors}
-          submitLabel="Create {{ name_pascal }}"
-          cancelHref="/{{ module }}/{{ table }}"
-          onSubmit={submit}
-        />
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8 text-sm">
+      <div>
+        <p class="font-semibold text-gray-700">Shipping to</p>
+        <p class="text-gray-600">{{ order.address_line }}</p>
+        <p class="text-gray-600">{{ order.city }}, {{ order.country }}</p>
       </div>
-    </AppLayout>
-  )
-}
-"#
-    .to_string()
-}
-
-fn scaffold_page_edit_template() -> String {
-    r#"import type { FormEvent } from 'react'
-import { useForm } from '@inertiajs/react'
-import AppLayout from '@app/layouts/AppLayout'
-import {{ name_pascal }}Form from './Form'
-
-type FormData = Record<string, string | boolean>
-
-interface Props {
-  item: Record<string, unknown> & { id: number }
-}
-{% if has_datetime %}
-function datetimeLocalValue(value: unknown) {
-  return value === null || value === undefined ? '' : String(value).slice(0, 16)
-}
-{% endif %}
-
-export default function {{ name_pascal }}Edit({ item }: Props) {
-  const { data, setData, put, processing, errors } = useForm({
-{% for field in fields %}    '{{ field.name }}': {% if field.is_bool %}Boolean(item['{{ field.name }}']){% elif field.is_datetime %}datetimeLocalValue(item['{{ field.name }}']){% else %}String(item['{{ field.name }}'] ?? ''){% endif %},
-{% endfor %}  })
-  const formData = data as FormData
-  const setFormData = setData as (field: string, value: string | boolean) => void
-  const formErrors = errors as Record<string, string | undefined>
-
-  function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    put(`/{{ module }}/{{ table }}/${item.id}/edit`)
-  }
-
-  return (
-    <AppLayout>
-      <div className="max-w-3xl">
-        <div className="mb-8">
-          <p className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">{{ table }}</p>
-          <h1 className="mt-2 text-3xl font-bold text-slate-950">Edit {{ name_pascal }}</h1>
-        </div>
-        <{{ name_pascal }}Form
-          data={formData}
-          setData={setFormData}
-          processing={processing}
-          errors={formErrors}
-          submitLabel="Save {{ name_pascal }}"
-          cancelHref="/{{ module }}/{{ table }}"
-          onSubmit={submit}
-        />
+      <div>
+        <p class="font-semibold text-gray-700">Status</p>
+        <p class="text-gray-600">{{ order.status }}</p>
       </div>
-    </AppLayout>
-  )
-}
-"#
-    .to_string()
-}
+    </div>
 
-fn scaffold_page_show_template() -> String {
-    r#"import { Link, router } from '@inertiajs/react'
-import AppLayout from '@app/layouts/AppLayout'
-
-interface Props {
-  item: Record<string, unknown> & { id: number }
-}
-
-export default function {{ name_pascal }}Show({ item }: Props) {
-  return (
-    <AppLayout>
-      <div className="max-w-3xl">
-        <div className="mb-8 flex items-start justify-between gap-4">
-          <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">{{ table }}</p>
-            <h1 className="mt-2 text-3xl font-bold text-slate-950">{{ name_pascal }} #{item.id}</h1>
-          </div>
-          <div className="flex gap-3">
-            <Link
-              href="/{{ module }}/{{ table }}"
-              className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-            >
-              Back
-            </Link>
-            <Link
-              href={`/{{ module }}/{{ table }}/${item.id}/edit`}
-              className="rounded-xl bg-slate-950 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
-            >
-              Edit
-            </Link>
-          </div>
-        </div>
-
-        <dl className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-{% for field in fields %}          <div className="border-b border-slate-100 px-6 py-4 last:border-b-0">
-            <dt className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">{{ field.title }}</dt>
-            <dd className="mt-2 whitespace-pre-wrap text-sm text-slate-900">{String(item['{{ field.name }}'] ?? '')}</dd>
-          </div>
-{% endfor %}        </dl>
-
-        <button
-          type="button"
-          onClick={() => {
-            if (window.confirm('Delete this {{ name_pascal }}?')) {
-              router.delete('/{{ module }}/{{ table }}/' + item.id)
-            }
-          }}
-          className="mt-6 rounded-xl border border-red-200 px-4 py-2 text-sm font-semibold text-red-600 hover:bg-red-50"
-        >
-          Delete {{ name_pascal }}
-        </button>
-      </div>
-    </AppLayout>
-  )
-}
+    <div class="overflow-hidden rounded-lg border">
+      <table class="min-w-full divide-y divide-gray-200">
+        <thead class="bg-gray-50">
+          <tr>
+            <th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Item</th>
+            <th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Qty</th>
+            <th class="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">Subtotal</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-100">
+          {% for item in items %}
+          <tr>
+            <td class="px-4 py-3 text-sm text-gray-900">{{ item.product_name }}</td>
+            <td class="px-4 py-3 text-sm text-gray-500">{{ item.quantity }}</td>
+            <td class="px-4 py-3 text-right text-sm text-gray-900">{{ "%.2f" | format(item.subtotal_cents / 100) }} {{ order.currency }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+        <tfoot class="bg-gray-50">
+          <tr>
+            <td colspan="2" class="px-4 py-3 text-right font-semibold">Total</td>
+            <td class="px-4 py-3 text-right font-bold">{{ "%.2f" | format(order.total_cents / 100) }} {{ order.currency }}</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}
 "#
     .to_string()
 }

@@ -1,0 +1,14 @@
+# Vendored frontend assets — pinned + SRI-verified (no npm).
+# Managed by `rwfw add component`; verify in CI with `rwfw vendor verify`.
+
+[turbo]
+version = "8.0.13"
+file = "vendor/turbo.min.js"
+source = "https://cdn.jsdelivr.net/npm/@hotwired/turbo@8.0.13/dist/turbo.es2017-esm.js"
+integrity = "sha384-NI8CHsRkv24yLcjakziHOUy0OgIw7LgwYbPOqGKuor2vpEPx5JrJOBoVjXzDrubd"
+
+[stimulus]
+version = "3.2.2"
+file = "vendor/stimulus.min.js"
+source = "https://cdn.jsdelivr.net/npm/@hotwired/stimulus@3.2.2/dist/stimulus.js"
+integrity = "sha384-Z9ISq680E84zQ7uFT7Pw8g/TlnoyCUECFycQz5aZs9IlrNFR56FhXoVi5U7bVi+l"

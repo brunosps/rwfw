@@ -1,27 +1,28 @@
 use crate::repositories::post_repo::PostRepository;
 use crate::use_cases::create_post::{CreatePostInput, CreatePostUseCase};
-use axum::extract::{Json, State};
-use axum::response::{IntoResponse, Response};
+use axum::extract::{Form, State};
+use axum::http::StatusCode;
+use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing;
 use rwfw_core::app::AppState;
 use rwfw_core::auth::CurrentUser;
 use rwfw_core::error::AppError;
-use rwfw_core::inertia::Inertia;
+use rwfw_core::view::View;
 
 pub fn route() -> axum::routing::MethodRouter<AppState> {
     routing::get(get).post(post)
 }
 
-/// GET /blog/posts - List all posts
-async fn get(State(state): State<AppState>, i: Inertia) -> Response {
+/// GET /blog/posts - public list of posts.
+async fn get(State(state): State<AppState>, v: View) -> Response {
     let repo = PostRepository::new(state.db.clone());
     let (posts, total) = match repo.find_all(1, 20).await {
         Ok(result) => result,
         Err(error) => return AppError::Internal(error).into_response(),
     };
 
-    i.render_with_ssr(
-        "blog/posts/Index",
+    v.render(
+        "blog/posts/index",
         serde_json::json!({
             "posts": posts,
             "pagination": {
@@ -32,22 +33,47 @@ async fn get(State(state): State<AppState>, i: Inertia) -> Response {
             }
         }),
     )
-    .await
 }
 
-/// POST /blog/posts - Create a new post
+/// POST /blog/posts - create a new post (requires authentication).
 async fn post(
     State(state): State<AppState>,
     user: CurrentUser,
-    i: Inertia,
-    Json(input): Json<CreatePostInput>,
+    v: View,
+    Form(input): Form<CreatePostInput>,
 ) -> Response {
     let repo = PostRepository::new(state.db.clone());
     let use_case = CreatePostUseCase;
 
+    let title = input.title.clone();
+    let body = input.body.clone();
+
     match use_case.execute(&repo, user.id, input).await {
-        Ok(output) => Inertia::redirect(&format!("/blog/posts/{}", output.post.id)),
-        Err(AppError::Validation(errors)) => i.redirect_back_with_errors(errors),
+        Ok(output) => {
+            // Broadcast the new post to anyone watching the list (Turbo Stream / SSE).
+            let post_id = output.post.id;
+            let card = v.render_fragment(
+                "blog/posts/_card",
+                serde_json::json!({ "post": output.post }),
+            );
+            let stream = rwfw_core::view::turbo::TurboStream::new(
+                rwfw_core::view::turbo::TurboAction::Prepend,
+                "posts",
+                card,
+            )
+            .render();
+            let _ = state.broadcaster.send(stream);
+
+            Redirect::to(&format!("/blog/posts/{post_id}")).into_response()
+        }
+        Err(AppError::Validation(errors)) => v.render_status(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "blog/create",
+            serde_json::json!({
+                "errors": rwfw_core::validation::first_messages(errors),
+                "old": { "title": title, "body": body }
+            }),
+        ),
         Err(error) => error.into_response(),
     }
 }

@@ -18,3 +18,11 @@ tracing = { workspace = true }
 inventory = { workspace = true }
 axum = { workspace = true }
 anyhow = { workspace = true }
+
+[dev-dependencies]
+reqwest = { version = "0.12", features = ["json", "cookies"] }
+serde_json = { workspace = true }
+sea-orm = { workspace = true }
+uuid = { workspace = true }
+chromiumoxide = { version = "0.7", default-features = false, features = ["tokio-runtime"] }
+futures = "0.3"

@@ -1,15 +1,15 @@
 use axum::extract::OriginalUri;
 use axum::http::header::{HeaderMap, REFERER, SET_COOKIE};
-use axum::response::{Html, IntoResponse, Response};
-use serde::Serialize;
+use axum::response::{IntoResponse, Response};
 use serde_json::{Map, Value};
 
-/// The Inertia extractor for Axum handlers.
-/// Detects X-Inertia header and provides render/redirect methods.
+/// Server-side redirect helper, retained from the legacy Inertia integration.
+///
+/// The React/Inertia render path is gone (replaced by [`crate::view::View`] +
+/// Hotwire); only the redirect helpers survive because SSO/logout flows still
+/// use flash- and error-cookie redirects.
 #[derive(Clone)]
 pub struct Inertia {
-    pub is_inertia: bool,
-    pub version: Option<String>,
     pub url: String,
     pub headers: HeaderMap,
     pub shared_props: Value,
@@ -21,82 +21,10 @@ impl Inertia {
     }
 
     pub fn from_request_with_shared(headers: &HeaderMap, uri: &str, shared_props: Value) -> Self {
-        let is_inertia = headers
-            .get("X-Inertia")
-            .map(|v| v.to_str().unwrap_or("") == "true")
-            .unwrap_or(false);
-
-        let version = headers
-            .get("X-Inertia-Version")
-            .and_then(|v| v.to_str().ok())
-            .map(|s| s.to_string());
-
         Self {
-            is_inertia,
-            version,
             url: uri.to_string(),
             headers: headers.clone(),
             shared_props,
-        }
-    }
-
-    /// Render an Inertia page response.
-    /// - XHR with X-Inertia header → JSON response
-    /// - Initial page load + SSR available → HTML with server-rendered content
-    /// - Initial page load + no SSR → HTML shell with data-page for CSR
-    pub fn render(&self, component: &str, props: Value) -> Response {
-        let page = InertiaPage {
-            component: component.to_string(),
-            props: self.merge_props(props),
-            url: self.url.clone(),
-            version: "1.0".to_string(),
-        };
-
-        if self.is_inertia {
-            // XHR request - return JSON
-            let mut response = axum::Json(&page).into_response();
-            response
-                .headers_mut()
-                .insert("X-Inertia", "true".parse().unwrap());
-            response
-                .headers_mut()
-                .insert("Vary", "X-Inertia".parse().unwrap());
-            response
-        } else {
-            // Initial page load - return HTML shell
-            let page_json = serde_json::to_string(&page).unwrap_or_default();
-
-            // In production, attempt SSR. In dev, always CSR.
-            let html = crate::inertia::response::render_html_shell(&page_json, None);
-            Html(html).into_response()
-        }
-    }
-
-    /// Render with SSR support (async version for use when SSR is desired)
-    pub async fn render_with_ssr(&self, component: &str, props: Value) -> Response {
-        let page = InertiaPage {
-            component: component.to_string(),
-            props: self.merge_props(props),
-            url: self.url.clone(),
-            version: "1.0".to_string(),
-        };
-
-        if self.is_inertia {
-            let mut response = axum::Json(&page).into_response();
-            response
-                .headers_mut()
-                .insert("X-Inertia", "true".parse().unwrap());
-            response
-                .headers_mut()
-                .insert("Vary", "X-Inertia".parse().unwrap());
-            response
-        } else {
-            let page_json = serde_json::to_string(&page).unwrap_or_default();
-
-            // Try SSR if available
-            let ssr_html = crate::ssr::render(&page_json).await;
-            let html = crate::inertia::response::render_html_shell(&page_json, ssr_html.as_deref());
-            Html(html).into_response()
         }
     }
 
@@ -178,19 +106,6 @@ impl Inertia {
             .and_then(referer_path)
             .unwrap_or_else(|| self.url.clone())
     }
-
-    fn merge_props(&self, props: Value) -> Value {
-        match (&self.shared_props, props) {
-            (Value::Object(shared), Value::Object(page)) => {
-                let mut merged = shared.clone();
-                for (key, value) in page {
-                    merged.insert(key, value);
-                }
-                Value::Object(merged)
-            }
-            (_, page) => page,
-        }
-    }
 }
 
 fn referer_path(referer: &str) -> Option<String> {
@@ -202,14 +117,6 @@ fn referer_path(referer: &str) -> Option<String> {
     let after_host = &referer[scheme_end + 3..];
     let path_start = after_host.find('/')?;
     Some(after_host[path_start..].to_string())
-}
-
-#[derive(Debug, Serialize)]
-pub struct InertiaPage {
-    pub component: String,
-    pub props: Value,
-    pub url: String,
-    pub version: String,
 }
 
 impl<S> axum::extract::FromRequestParts<S> for Inertia

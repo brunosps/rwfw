@@ -5,6 +5,7 @@ pub mod csrf;
 pub mod db;
 pub mod error;
 pub mod events;
+pub mod forms;
 pub mod health;
 pub mod inertia;
 pub mod logging;
@@ -14,16 +15,16 @@ pub mod pagination;
 pub mod query;
 pub mod rate_limit;
 pub mod repository;
-pub mod ssr;
 pub mod use_case;
 pub mod validation;
-pub mod vite;
+pub mod view;
 
 pub mod prelude {
     pub use crate::app::{AppContext, AppState};
     pub use crate::auth::CurrentUser;
     pub use crate::error::AppError;
     pub use crate::inertia::Inertia;
+    pub use crate::view::View;
     pub use crate::migration::Migration;
     pub use crate::module::{Module, ModuleRegistration, NavItem};
     pub use crate::use_case::UseCase;

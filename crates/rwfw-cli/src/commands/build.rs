@@ -5,8 +5,6 @@ pub async fn run() -> anyhow::Result<()> {
     println!("Building for production...");
 
     let app_package = crate::commands::app::package_name();
-    run_command("npm", &["run", "build"]).await?;
-    run_command("npm", &["run", "build:ssr"]).await?;
     run_command("cargo", &["build", "--release", "-p", &app_package]).await?;
 
     println!("Production build complete.");

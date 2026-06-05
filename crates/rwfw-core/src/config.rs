@@ -19,13 +19,6 @@ pub struct LoggingConfig {
     pub format: String,
 }
 
-#[derive(Debug, Clone, Deserialize)]
-pub struct ViteConfig {
-    pub dev_server: Option<String>,
-    pub manifest_path: String,
-    pub ssr_bundle_path: Option<String>,
-}
-
 #[derive(Debug, Clone)]
 pub struct AppConfig {
     inner: Config,
@@ -60,15 +53,21 @@ impl AppConfig {
         Ok(self.inner.get::<LoggingConfig>("logging")?)
     }
 
-    pub fn vite(&self) -> anyhow::Result<ViteConfig> {
-        Ok(self.inner.get::<ViteConfig>("vite")?)
-    }
-
     pub fn module_config<T: DeserializeOwned>(&self, module: &str) -> anyhow::Result<T> {
         Ok(self.inner.get::<T>(module)?)
     }
 
     pub fn is_development(&self) -> bool {
         std::env::var("RWFW_ENV").unwrap_or_else(|_| "development".into()) == "development"
+    }
+
+    /// Build a minimal configuration for tests, overriding only the database URL.
+    /// Avoids mutating process-global environment variables across parallel tests.
+    #[doc(hidden)]
+    pub fn for_test(database_url: &str) -> anyhow::Result<Self> {
+        let config = Config::builder()
+            .set_override("database.url", database_url)?
+            .build()?;
+        Ok(Self { inner: config })
     }
 }

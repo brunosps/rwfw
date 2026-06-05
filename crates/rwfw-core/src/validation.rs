@@ -24,3 +24,20 @@ pub fn into_app_error(errors: ValidationErrors) -> AppError {
 
     AppError::Validation(error_map)
 }
+
+/// Reduce a field -> messages map to field -> first message, for rendering
+/// inline form errors in templates (`{{ errors.title }}`).
+pub fn first_messages(errors: HashMap<String, Vec<String>>) -> HashMap<String, String> {
+    errors
+        .into_iter()
+        .map(|(field, messages)| {
+            (
+                field,
+                messages
+                    .into_iter()
+                    .next()
+                    .unwrap_or_else(|| "Invalid value".to_string()),
+            )
+        })
+        .collect()
+}

@@ -4,7 +4,9 @@ use crate::inertia::SharedData;
 use crate::module::{Module, NavItem};
 use axum::Router;
 use axum::middleware;
+use crate::view::{TemplateRoot, ViewRenderer};
 use sea_orm::DatabaseConnection;
+use std::path::PathBuf;
 use std::sync::Arc;
 use tower_http::services::ServeDir;
 
@@ -14,6 +16,9 @@ pub struct AppState {
     pub db: DatabaseConnection,
     pub events: Arc<EventBus>,
     pub shared_data: Arc<SharedData>,
+    pub view: ViewRenderer,
+    /// Broadcast channel for Turbo Stream fragments delivered over SSE.
+    pub broadcaster: tokio::sync::broadcast::Sender<String>,
     modules_nav: Arc<Vec<ModuleNav>>,
 }
 
@@ -37,6 +42,7 @@ pub struct AppContext {
 pub struct RwfwApp {
     modules: Vec<Box<dyn Module>>,
     config: AppConfig,
+    app_web_root: Option<PathBuf>,
 }
 
 impl RwfwApp {
@@ -44,7 +50,16 @@ impl RwfwApp {
         Self {
             modules: Vec::new(),
             config,
+            app_web_root: None,
         }
+    }
+
+    /// Set the app-level web root (containing `templates/`, `vendor/`, `assets/`).
+    /// Callers pass an absolute path (e.g. via `CARGO_MANIFEST_DIR`) so template
+    /// resolution is independent of the process working directory.
+    pub fn web_root(mut self, path: impl Into<PathBuf>) -> Self {
+        self.app_web_root = Some(path.into());
+        self
     }
 
     pub fn module(mut self, module: Box<dyn Module>) -> Self {
@@ -53,16 +68,21 @@ impl RwfwApp {
     }
 
     pub async fn build(self) -> anyhow::Result<Router> {
-        let is_development = self.config.is_development();
         let db = crate::db::connect(&self.config).await?;
         let events = Arc::new(EventBus::new());
 
         let mut modules_nav = Vec::new();
+        let mut template_roots: Vec<TemplateRoot> = Vec::new();
         let mut router = Router::new();
 
         for module in &self.modules {
             let name = module.name().to_string();
             let prefix = format!("/{}", name);
+
+            // Register this module's template root (namespaced by module name).
+            if let Some(web) = module.web_root() {
+                template_roots.push(TemplateRoot::module(&name, web.join("templates")));
+            }
 
             tracing::info!(module = %name, prefix = %prefix, "Mounting module");
 
@@ -91,33 +111,66 @@ impl RwfwApp {
             }
         }
 
+        // App-level templates (layouts, shared partials) are the fallback root.
+        if let Some(app_web) = &self.app_web_root {
+            template_roots.push(TemplateRoot::app(app_web.join("templates")));
+        }
+        let view = ViewRenderer::new(template_roots);
+
         let shared_data = Arc::new(SharedData::default());
+        let (broadcaster, _rx) = tokio::sync::broadcast::channel::<String>(256);
 
         let state = AppState {
             config: Arc::new(self.config),
             db,
             events,
             shared_data,
+            view,
+            broadcaster,
             modules_nav: Arc::new(modules_nav),
         };
 
         // Add health check
         router = router.route("/health", axum::routing::get(health_handler));
         router = router.route("/favicon.ico", axum::routing::get(favicon_handler));
+        router = router.route("/components", axum::routing::get(components_catalog));
 
-        if !is_development {
-            router = router.nest_service("/assets", ServeDir::new("dist/client/assets"));
+        // Static assets (vendored JS, compiled CSS) served from the app web root
+        // in both dev and prod — no npm bundler involved.
+        if let Some(app_web) = &self.app_web_root {
+            router = router
+                .nest_service("/vendor", ServeDir::new(app_web.join("vendor")))
+                .nest_service("/assets", ServeDir::new(app_web.join("assets")));
         }
 
         router = router.layer(middleware::from_fn_with_state(
             state.clone(),
             crate::inertia::shared::inertia_shared_middleware,
         ));
+        // CSRF runs outermost: it issues the token (cookie + request extension)
+        // before shared props read it, and verifies double-submit on form posts.
+        router = router.layer(middleware::from_fn(crate::csrf::csrf_middleware));
 
         let router = router.with_state(state);
 
         Ok(router)
     }
+}
+
+/// Dev-only component catalog: lists discovered `<x-...>` components + props.
+async fn components_catalog(
+    state: axum::extract::State<AppState>,
+    v: crate::view::View,
+) -> axum::response::Response {
+    use axum::response::IntoResponse;
+    if !state.config.is_development() {
+        return axum::http::StatusCode::NOT_FOUND.into_response();
+    }
+    let components = state.view.components();
+    v.render(
+        "components_catalog",
+        serde_json::json!({ "components": components }),
+    )
 }
 
 async fn health_handler() -> axum::Json<serde_json::Value> {

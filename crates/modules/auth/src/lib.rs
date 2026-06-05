@@ -45,6 +45,10 @@ impl Module for AuthModule {
             Permission::new("auth.sessions.manage", "Manage sessions"),
         ]
     }
+
+    fn web_root(&self) -> Option<std::path::PathBuf> {
+        Some(std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("web"))
+    }
 }
 
 inventory::submit! {

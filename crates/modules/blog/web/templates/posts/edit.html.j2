@@ -1,0 +1,21 @@
+{% extends "layouts/app.html.j2" %}
+{% block title %}Edit Post{% endblock %}
+{% block content %}
+<div class="max-w-3xl">
+  <div class="mb-6">
+    <a href="/blog/posts/{{ post.id }}" class="text-blue-600 hover:underline text-sm">&larr; Back to post</a>
+  </div>
+
+  <h1 class="text-3xl font-bold mb-8">Edit Post</h1>
+
+  <form method="post" action="/blog/posts/{{ post.id }}/edit" class="bg-white rounded-lg shadow-sm border p-8 space-y-6">
+    <input type="hidden" name="_csrf" value="{{ csrf_token }}">
+    <x-field name="title" label="Title" :value="post.title" />
+    <x-field name="body" label="Content" type="textarea" :value="post.body" />
+    <div class="flex gap-4">
+      <button type="submit" data-turbo-submits-with="Saving..." class="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50">Save Changes</button>
+      <a href="/blog/posts/{{ post.id }}" class="px-6 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}
