@@ -5,42 +5,49 @@ use std::path::{Path, PathBuf};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
 pub enum ExampleKind {
     Blog,
+    Ecommerce,
 }
 
 impl ExampleKind {
     fn label(self) -> &'static str {
         match self {
             Self::Blog => "blog",
+            Self::Ecommerce => "ecommerce",
         }
     }
 
     fn module_name(self) -> &'static str {
         match self {
             Self::Blog => "blog",
+            Self::Ecommerce => "shop",
         }
     }
 
     fn module_crate_name(self) -> &'static str {
         match self {
             Self::Blog => "mod-blog",
+            Self::Ecommerce => "mod-shop",
         }
     }
 
     fn module_crate_ident(self) -> &'static str {
         match self {
             Self::Blog => "mod_blog",
+            Self::Ecommerce => "mod_shop",
         }
     }
 
     fn root_path(self) -> &'static str {
         match self {
             Self::Blog => "/blog",
+            Self::Ecommerce => "/shop",
         }
     }
 
     fn readme_title(self) -> &'static str {
         match self {
             Self::Blog => "Blog CMS example",
+            Self::Ecommerce => "Ecommerce storefront example",
         }
     }
 }
@@ -239,6 +246,7 @@ pub fn run(
     )?;
     match example {
         ExampleKind::Blog => write_blog_example(app_dir, &context)?,
+        ExampleKind::Ecommerce => write_ecommerce_example(app_dir, &context)?,
     }
 
     println!(
@@ -443,6 +451,20 @@ fn create_example_dirs(app_dir: &Path, example: ExampleKind) -> anyhow::Result<(
             "crates/modules/blog/src/routes/admin/posts/[id]",
             "crates/modules/blog/web/templates/posts",
             "crates/modules/blog/web/templates/admin/posts",
+        ],
+        ExampleKind::Ecommerce => &[
+            "crates/modules/shop/src/migrations",
+            "crates/modules/shop/src/models",
+            "crates/modules/shop/src/repositories",
+            "crates/modules/shop/src/use_cases",
+            "crates/modules/shop/src/routes/products/[slug]",
+            "crates/modules/shop/src/routes/cart",
+            "crates/modules/shop/src/routes/checkout",
+            "crates/modules/shop/src/routes/orders/[number]",
+            "crates/modules/shop/web/templates/products",
+            "crates/modules/shop/web/templates/cart",
+            "crates/modules/shop/web/templates/checkout",
+            "crates/modules/shop/web/templates/orders",
         ],
     };
 
@@ -897,6 +919,14 @@ fn readme_example_routes(example: ExampleKind) -> &'static str {
 - `/blog/posts/:slug` shows a public post.
 - `/blog/admin/posts` is protected and manages drafts, publishing, editing, and deletion.
 - `/auth/register` creates a user and signs in. The first user becomes admin."#
+        }
+        ExampleKind::Ecommerce => {
+            r#"- `/shop` is the storefront with category and search filters.
+- `/shop/products/:slug` shows a product detail page with an add-to-cart form.
+- `/shop/cart` is the server-rendered cart (backed by a cookie, no client JS state).
+- `/shop/checkout` renders the checkout form and posts a fake checkout to the backend.
+- `/shop/orders/:number` shows the persisted order confirmation.
+- `/auth/register` is included so you can test protected framework routes later, but storefront browsing and checkout are public in this example."#
         }
     }
 }
@@ -2407,6 +2437,889 @@ fn blog_admin_post_edit_page_template() -> String {
 }
 
 
+// ---------------------------------------------------------------------------
+// Ecommerce example (npm-free Hotwire): a `shop` module with products,
+// categories, a cookie-backed server-rendered cart, and a fake checkout that
+// persists orders. Mirrors the Hotwire blog example: `View` routes,
+// `.html.j2` templates extending `layouts/app.html.j2`, form-based mutations
+// with CSRF, and `data-turbo-method` links.
+// ---------------------------------------------------------------------------
+
+fn write_ecommerce_example(app_dir: &Path, context: &AppTemplateContext) -> anyhow::Result<()> {
+    write_file(
+        &app_dir.join("crates/modules/shop/Cargo.toml"),
+        shop_cargo_toml(context),
+    )?;
+    write_file(
+        &app_dir.join("crates/modules/shop/src/lib.rs"),
+        shop_lib_rs(),
+    )?;
+    write_file(
+        &app_dir.join("crates/modules/shop/src/cart.rs"),
+        shop_cart_rs(),
+    )?;
+    write_file(
+        &app_dir.join("crates/modules/shop/src/migrations/mod.rs"),
+        shop_migrations_mod_rs(),
+    )?;
+    write_file(
+        &app_dir.join("crates/modules/shop/src/migrations/20260101000000_create_shop_tables.sql"),
+        shop_create_tables_sql(),
+    )?;
+    write_file(
+        &app_dir.join("crates/modules/shop/src/models/mod.rs"),
+        shop_models_mod_rs(),
+    )?;
+    write_file(
+        &app_dir.join("crates/modules/shop/src/models/category.rs"),
+        shop_category_model_rs(),
+    )?;
+    write_file(
+        &app_dir.join("crates/modules/shop/src/models/product.rs"),
+        shop_product_model_rs(),
+    )?;
+    write_file(
+        &app_dir.join("crates/modules/shop/src/models/order.rs"),
+        shop_order_model_rs(),
+    )?;
+    write_file(
+        &app_dir.join("crates/modules/shop/src/models/order_item.rs"),
+        shop_order_item_model_rs(),
+    )?;
+    write_file(
+        &app_dir.join("crates/modules/shop/src/repositories/mod.rs"),
+        shop_repositories_mod_rs(),
+    )?;
+    write_file(
+        &app_dir.join("crates/modules/shop/src/repositories/shop_repo.rs"),
+        shop_repository_rs(),
+    )?;
+    write_file(
+        &app_dir.join("crates/modules/shop/src/use_cases/mod.rs"),
+        shop_use_cases_mod_rs(),
+    )?;
+    write_file(
+        &app_dir.join("crates/modules/shop/src/use_cases/checkout.rs"),
+        shop_checkout_use_case_rs(),
+    )?;
+    write_file(
+        &app_dir.join("crates/modules/shop/src/routes/index.rs"),
+        shop_index_route_rs(),
+    )?;
+    write_file(
+        &app_dir.join("crates/modules/shop/src/routes/products/[slug].rs"),
+        shop_product_show_route_rs(),
+    )?;
+    write_file(
+        &app_dir.join("crates/modules/shop/src/routes/cart/index.rs"),
+        shop_cart_route_rs(),
+    )?;
+    write_file(
+        &app_dir.join("crates/modules/shop/src/routes/cart/add.rs"),
+        shop_cart_add_route_rs(),
+    )?;
+    write_file(
+        &app_dir.join("crates/modules/shop/src/routes/cart/update.rs"),
+        shop_cart_update_route_rs(),
+    )?;
+    write_file(
+        &app_dir.join("crates/modules/shop/src/routes/checkout/index.rs"),
+        shop_checkout_route_rs(),
+    )?;
+    write_file(
+        &app_dir.join("crates/modules/shop/src/routes/orders/[number].rs"),
+        shop_order_show_route_rs(),
+    )?;
+    write_file(
+        &app_dir.join("crates/modules/shop/web/templates/index.html.j2"),
+        shop_index_page_template(),
+    )?;
+    write_file(
+        &app_dir.join("crates/modules/shop/web/templates/_product_card.html.j2"),
+        shop_product_card_template(),
+    )?;
+    write_file(
+        &app_dir.join("crates/modules/shop/web/templates/products/show.html.j2"),
+        shop_product_show_page_template(),
+    )?;
+    write_file(
+        &app_dir.join("crates/modules/shop/web/templates/cart/index.html.j2"),
+        shop_cart_page_template(),
+    )?;
+    write_file(
+        &app_dir.join("crates/modules/shop/web/templates/checkout/index.html.j2"),
+        shop_checkout_page_template(),
+    )?;
+    write_file(
+        &app_dir.join("crates/modules/shop/web/templates/orders/show.html.j2"),
+        shop_order_show_page_template(),
+    )?;
+
+    Ok(())
+}
+
+fn shop_cargo_toml(context: &AppTemplateContext) -> String {
+    format!(
+        r#"[package]
+name = "mod-shop"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+rwfw-core = {}
+rwfw-shared = {}
+rwfw-macros = {}
+axum = {{ workspace = true }}
+async-trait = {{ workspace = true }}
+inventory = {{ workspace = true }}
+serde = {{ workspace = true }}
+serde_json = {{ workspace = true }}
+sea-orm = {{ workspace = true }}
+chrono = {{ workspace = true }}
+tracing = {{ workspace = true }}
+anyhow = {{ workspace = true }}
+uuid = {{ workspace = true }}
+"#,
+        context.rwfw_core_dep, context.rwfw_shared_dep, context.rwfw_macros_dep
+    )
+}
+
+fn shop_lib_rs() -> String {
+    r#"pub mod cart;
+pub mod migrations;
+pub mod models;
+pub mod repositories;
+pub mod use_cases;
+
+use axum::Router;
+use rwfw_core::app::AppState;
+use rwfw_core::auth::Permission;
+use rwfw_core::module::{Module, ModuleRegistration, NavItem};
+
+#[rwfw_macros::rwfw_routes("src/routes")]
+pub struct ShopRoutes;
+
+pub struct ShopModule;
+
+impl ShopModule {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+#[async_trait::async_trait]
+impl Module for ShopModule {
+    fn name(&self) -> &str {
+        "shop"
+    }
+
+    fn routes(&self) -> Router<AppState> {
+        ShopRoutes::generated_routes()
+    }
+
+    fn migrations(&self) -> Vec<rwfw_core::migration::Migration> {
+        migrations::migrations()
+    }
+
+    fn permissions(&self) -> Vec<Permission> {
+        vec![Permission::new("shop.orders.view", "View shop orders")]
+    }
+
+    fn nav_items(&self) -> Vec<NavItem> {
+        vec![
+            NavItem {
+                label: "Shop".to_string(),
+                href: "/shop".to_string(),
+                icon: Some("store".to_string()),
+            },
+            NavItem {
+                label: "Cart".to_string(),
+                href: "/shop/cart".to_string(),
+                icon: Some("cart".to_string()),
+            },
+        ]
+    }
+
+    fn web_root(&self) -> Option<std::path::PathBuf> {
+        Some(std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("web"))
+    }
+}
+
+inventory::submit! {
+    ModuleRegistration::new("shop", || Box::new(ShopModule::new()))
+}
+"#
+    .to_string()
+}
+
+fn shop_cart_rs() -> String {
+    r#"//! Cookie-backed, server-rendered cart. The cart lives entirely on the server
+//! side as a small `rwfw_cart` cookie holding `product_id:quantity` pairs, so
+//! there is no client-side JS state (no localStorage, no React store). Every
+//! mutation is a form POST that rewrites the cookie and redirects.
+
+use axum::http::header::{COOKIE, SET_COOKIE};
+use axum::http::{HeaderMap, HeaderValue};
+use std::collections::BTreeMap;
+
+pub const CART_COOKIE: &str = "rwfw_cart";
+const MAX_QUANTITY: i32 = 20;
+
+/// Parse the cart cookie into an ordered map of `product_id -> quantity`.
+pub fn parse(headers: &HeaderMap) -> BTreeMap<i32, i32> {
+    let mut cart = BTreeMap::new();
+    let Some(raw) = cookie_value(headers, CART_COOKIE) else {
+        return cart;
+    };
+
+    for pair in raw.split(',') {
+        let Some((id, qty)) = pair.split_once(':') else {
+            continue;
+        };
+        let (Ok(id), Ok(qty)) = (id.trim().parse::<i32>(), qty.trim().parse::<i32>()) else {
+            continue;
+        };
+        if id <= 0 || qty <= 0 {
+            continue;
+        }
+        cart.insert(id, qty.min(MAX_QUANTITY));
+    }
+
+    cart
+}
+
+/// Add (or increment) a product in the cart and return the updated map.
+pub fn add(mut cart: BTreeMap<i32, i32>, product_id: i32, quantity: i32) -> BTreeMap<i32, i32> {
+    if product_id <= 0 || quantity <= 0 {
+        return cart;
+    }
+    let entry = cart.entry(product_id).or_insert(0);
+    *entry = (*entry + quantity).min(MAX_QUANTITY);
+    cart
+}
+
+/// Set an explicit quantity for a product. A quantity of `0` removes it.
+pub fn set_quantity(
+    mut cart: BTreeMap<i32, i32>,
+    product_id: i32,
+    quantity: i32,
+) -> BTreeMap<i32, i32> {
+    if product_id <= 0 {
+        return cart;
+    }
+    if quantity <= 0 {
+        cart.remove(&product_id);
+    } else {
+        cart.insert(product_id, quantity.min(MAX_QUANTITY));
+    }
+    cart
+}
+
+/// Serialize the cart back into a `Set-Cookie` header value.
+pub fn cookie(cart: &BTreeMap<i32, i32>) -> Option<HeaderValue> {
+    let value = if cart.is_empty() {
+        format!("{CART_COOKIE}=; Path=/; Max-Age=0; SameSite=Lax")
+    } else {
+        let body = cart
+            .iter()
+            .map(|(id, qty)| format!("{id}:{qty}"))
+            .collect::<Vec<_>>()
+            .join(",");
+        format!("{CART_COOKIE}={body}; Path=/; Max-Age=2592000; SameSite=Lax")
+    };
+    value.parse().ok()
+}
+
+/// Attach the serialized cart cookie to a response.
+pub fn apply(response: &mut axum::response::Response, cart: &BTreeMap<i32, i32>) {
+    if let Some(value) = cookie(cart) {
+        response.headers_mut().append(SET_COOKIE, value);
+    }
+}
+
+fn cookie_value<'a>(headers: &'a HeaderMap, name: &str) -> Option<&'a str> {
+    let header = headers.get(COOKIE)?.to_str().ok()?;
+    header.split(';').find_map(|cookie| {
+        let (key, value) = cookie.trim().split_once('=')?;
+        (key == name).then_some(value)
+    })
+}
+"#
+    .to_string()
+}
+
+fn shop_migrations_mod_rs() -> String {
+    r#"use rwfw_core::migration::Migration;
+
+pub fn migrations() -> Vec<Migration> {
+    vec![
+        Migration::new(
+            "20260101000000",
+            "create_shop_tables",
+            include_str!("20260101000000_create_shop_tables.sql"),
+        ),
+    ]
+}
+"#
+    .to_string()
+}
+
+fn shop_create_tables_sql() -> String {
+    r#"CREATE SCHEMA IF NOT EXISTS shop;
+
+CREATE TABLE IF NOT EXISTS shop.categories (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    slug VARCHAR(255) NOT NULL UNIQUE,
+    description TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS shop.products (
+    id SERIAL PRIMARY KEY,
+    category_id INTEGER REFERENCES shop.categories(id) ON DELETE SET NULL,
+    name VARCHAR(255) NOT NULL,
+    slug VARCHAR(255) NOT NULL UNIQUE,
+    description TEXT NOT NULL,
+    price_cents INTEGER NOT NULL,
+    currency VARCHAR(3) NOT NULL DEFAULT 'USD',
+    image_url VARCHAR(500) NOT NULL,
+    inventory INTEGER NOT NULL DEFAULT 0,
+    featured BOOLEAN NOT NULL DEFAULT FALSE,
+    active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS shop.orders (
+    id SERIAL PRIMARY KEY,
+    number VARCHAR(64) NOT NULL UNIQUE,
+    customer_name VARCHAR(255) NOT NULL,
+    customer_email VARCHAR(255) NOT NULL,
+    address_line VARCHAR(500) NOT NULL,
+    city VARCHAR(255) NOT NULL,
+    country VARCHAR(255) NOT NULL,
+    total_cents INTEGER NOT NULL,
+    currency VARCHAR(3) NOT NULL DEFAULT 'USD',
+    status VARCHAR(64) NOT NULL DEFAULT 'paid_fake',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS shop.order_items (
+    id SERIAL PRIMARY KEY,
+    order_id INTEGER NOT NULL REFERENCES shop.orders(id) ON DELETE CASCADE,
+    product_id INTEGER,
+    product_name VARCHAR(255) NOT NULL,
+    product_slug VARCHAR(255) NOT NULL,
+    unit_price_cents INTEGER NOT NULL,
+    quantity INTEGER NOT NULL,
+    subtotal_cents INTEGER NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_shop_products_active_featured
+    ON shop.products (active, featured);
+
+INSERT INTO shop.categories (name, slug, description)
+VALUES
+    ('Desk', 'desk', 'Objects for focused workspaces.'),
+    ('Carry', 'carry', 'Bags and daily tools for moving between contexts.'),
+    ('Sound', 'sound', 'Audio gear for deep work.')
+ON CONFLICT (slug) DO NOTHING;
+
+INSERT INTO shop.products
+    (category_id, name, slug, description, price_cents, currency, image_url, inventory, featured, active)
+VALUES
+    (
+        (SELECT id FROM shop.categories WHERE slug = 'desk'),
+        'Machined Keyboard Tray',
+        'machined-keyboard-tray',
+        'A low-profile aluminum tray that keeps your keyboard and notes aligned for long work sessions.',
+        12900,
+        'USD',
+        'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=1200&q=80',
+        18,
+        TRUE,
+        TRUE
+    ),
+    (
+        (SELECT id FROM shop.categories WHERE slug = 'desk'),
+        'Task Lamp One',
+        'task-lamp-one',
+        'Warm directional light with a heavy base and a single mechanical hinge.',
+        18900,
+        'USD',
+        'https://images.unsplash.com/photo-1507473885765-e6ed057f782c?auto=format&fit=crop&w=1200&q=80',
+        9,
+        TRUE,
+        TRUE
+    ),
+    (
+        (SELECT id FROM shop.categories WHERE slug = 'carry'),
+        'Field Pack 24L',
+        'field-pack-24l',
+        'A weather resistant everyday pack with structured compartments for laptop, camera and cables.',
+        24000,
+        'USD',
+        'https://images.unsplash.com/photo-1622560480605-d83c853bc5c3?auto=format&fit=crop&w=1200&q=80',
+        12,
+        TRUE,
+        TRUE
+    ),
+    (
+        (SELECT id FROM shop.categories WHERE slug = 'sound'),
+        'Studio Monitor Headphones',
+        'studio-monitor-headphones',
+        'Closed-back headphones tuned for clear calls, editing and focused work.',
+        16000,
+        'USD',
+        'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?auto=format&fit=crop&w=1200&q=80',
+        24,
+        FALSE,
+        TRUE
+    )
+ON CONFLICT (slug) DO NOTHING;
+"#
+    .to_string()
+}
+
+fn shop_models_mod_rs() -> String {
+    r#"pub mod category;
+pub mod order;
+pub mod order_item;
+pub mod product;
+
+pub use category::Category;
+pub use order::Order;
+pub use order_item::OrderItem;
+pub use product::Product;
+"#
+    .to_string()
+}
+
+fn shop_category_model_rs() -> String {
+    r#"use sea_orm::entity::prelude::*;
+use serde::{Deserialize, Serialize};
+
+#[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
+#[sea_orm(table_name = "categories", schema_name = "shop")]
+pub struct Model {
+    #[sea_orm(primary_key)]
+    pub id: i32,
+    pub name: String,
+    pub slug: String,
+    #[sea_orm(column_type = "Text")]
+    pub description: String,
+    pub created_at: DateTimeWithTimeZone,
+    pub updated_at: DateTimeWithTimeZone,
+}
+
+#[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+pub enum Relation {}
+
+impl ActiveModelBehavior for ActiveModel {}
+
+pub type Category = Model;
+"#
+    .to_string()
+}
+
+fn shop_product_model_rs() -> String {
+    r#"use sea_orm::entity::prelude::*;
+use serde::{Deserialize, Serialize};
+
+#[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
+#[sea_orm(table_name = "products", schema_name = "shop")]
+pub struct Model {
+    #[sea_orm(primary_key)]
+    pub id: i32,
+    pub category_id: Option<i32>,
+    pub name: String,
+    pub slug: String,
+    #[sea_orm(column_type = "Text")]
+    pub description: String,
+    pub price_cents: i32,
+    pub currency: String,
+    pub image_url: String,
+    pub inventory: i32,
+    pub featured: bool,
+    pub active: bool,
+    pub created_at: DateTimeWithTimeZone,
+    pub updated_at: DateTimeWithTimeZone,
+}
+
+#[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+pub enum Relation {}
+
+impl ActiveModelBehavior for ActiveModel {}
+
+pub type Product = Model;
+"#
+    .to_string()
+}
+
+fn shop_order_model_rs() -> String {
+    r#"use sea_orm::entity::prelude::*;
+use serde::{Deserialize, Serialize};
+
+#[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
+#[sea_orm(table_name = "orders", schema_name = "shop")]
+pub struct Model {
+    #[sea_orm(primary_key)]
+    pub id: i32,
+    pub number: String,
+    pub customer_name: String,
+    pub customer_email: String,
+    pub address_line: String,
+    pub city: String,
+    pub country: String,
+    pub total_cents: i32,
+    pub currency: String,
+    pub status: String,
+    pub created_at: DateTimeWithTimeZone,
+    pub updated_at: DateTimeWithTimeZone,
+}
+
+#[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+pub enum Relation {}
+
+impl ActiveModelBehavior for ActiveModel {}
+
+pub type Order = Model;
+"#
+    .to_string()
+}
+
+fn shop_order_item_model_rs() -> String {
+    r#"use sea_orm::entity::prelude::*;
+use serde::{Deserialize, Serialize};
+
+#[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
+#[sea_orm(table_name = "order_items", schema_name = "shop")]
+pub struct Model {
+    #[sea_orm(primary_key)]
+    pub id: i32,
+    pub order_id: i32,
+    pub product_id: Option<i32>,
+    pub product_name: String,
+    pub product_slug: String,
+    pub unit_price_cents: i32,
+    pub quantity: i32,
+    pub subtotal_cents: i32,
+    pub created_at: DateTimeWithTimeZone,
+}
+
+#[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+pub enum Relation {}
+
+impl ActiveModelBehavior for ActiveModel {}
+
+pub type OrderItem = Model;
+"#
+    .to_string()
+}
+
+fn shop_repositories_mod_rs() -> String {
+    r#"pub mod shop_repo;
+"#
+    .to_string()
+}
+
+fn shop_repository_rs() -> String {
+    r#"use crate::models::category::{self, Column as CategoryColumn, Entity as CategoryEntity};
+use crate::models::order::{self, ActiveModel as OrderActiveModel, Column as OrderColumn, Entity as OrderEntity};
+use crate::models::order_item::{self, ActiveModel as OrderItemActiveModel, Column as OrderItemColumn, Entity as OrderItemEntity};
+use crate::models::product::{self, Column as ProductColumn, Entity as ProductEntity};
+use sea_orm::*;
+
+pub struct ShopRepository {
+    db: DatabaseConnection,
+}
+
+#[derive(Debug)]
+pub struct CheckoutProduct {
+    pub product: product::Model,
+    pub quantity: i32,
+}
+
+#[derive(Debug)]
+pub struct CreateOrder {
+    pub number: String,
+    pub customer_name: String,
+    pub customer_email: String,
+    pub address_line: String,
+    pub city: String,
+    pub country: String,
+    pub total_cents: i32,
+    pub currency: String,
+    pub items: Vec<CheckoutProduct>,
+}
+
+impl ShopRepository {
+    pub fn new(db: DatabaseConnection) -> Self {
+        Self { db }
+    }
+
+    pub async fn categories(&self) -> anyhow::Result<Vec<category::Model>> {
+        Ok(CategoryEntity::find()
+            .order_by_asc(CategoryColumn::Name)
+            .all(&self.db)
+            .await?)
+    }
+
+    pub async fn featured_products(&self) -> anyhow::Result<Vec<product::Model>> {
+        Ok(ProductEntity::find()
+            .filter(ProductColumn::Active.eq(true))
+            .filter(ProductColumn::Featured.eq(true))
+            .order_by_desc(ProductColumn::CreatedAt)
+            .all(&self.db)
+            .await?)
+    }
+
+    pub async fn products(
+        &self,
+        search: Option<&str>,
+        category_slug: Option<&str>,
+    ) -> anyhow::Result<Vec<product::Model>> {
+        let mut query = ProductEntity::find()
+            .filter(ProductColumn::Active.eq(true))
+            .order_by_desc(ProductColumn::Featured)
+            .order_by_asc(ProductColumn::Name);
+
+        if let Some(search) = search.map(str::trim).filter(|value| !value.is_empty()) {
+            query = query.filter(
+                Condition::any()
+                    .add(ProductColumn::Name.contains(search))
+                    .add(ProductColumn::Description.contains(search)),
+            );
+        }
+
+        if let Some(slug) = category_slug.map(str::trim).filter(|value| !value.is_empty()) {
+            let Some(category) = CategoryEntity::find()
+                .filter(CategoryColumn::Slug.eq(slug))
+                .one(&self.db)
+                .await?
+            else {
+                return Ok(Vec::new());
+            };
+            query = query.filter(ProductColumn::CategoryId.eq(category.id));
+        }
+
+        Ok(query.all(&self.db).await?)
+    }
+
+    pub async fn find_product_by_slug(&self, slug: &str) -> anyhow::Result<Option<product::Model>> {
+        Ok(ProductEntity::find()
+            .filter(ProductColumn::Slug.eq(slug))
+            .filter(ProductColumn::Active.eq(true))
+            .one(&self.db)
+            .await?)
+    }
+
+    pub async fn find_products_by_ids(&self, ids: &[i32]) -> anyhow::Result<Vec<product::Model>> {
+        if ids.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        Ok(ProductEntity::find()
+            .filter(ProductColumn::Id.is_in(ids.to_vec()))
+            .filter(ProductColumn::Active.eq(true))
+            .all(&self.db)
+            .await?)
+    }
+
+    pub async fn create_order(&self, data: CreateOrder) -> anyhow::Result<order::Model> {
+        let txn = self.db.begin().await?;
+        let now = chrono::Utc::now().fixed_offset();
+        let order = OrderActiveModel {
+            number: Set(data.number),
+            customer_name: Set(data.customer_name),
+            customer_email: Set(data.customer_email),
+            address_line: Set(data.address_line),
+            city: Set(data.city),
+            country: Set(data.country),
+            total_cents: Set(data.total_cents),
+            currency: Set(data.currency),
+            status: Set("paid_fake".to_string()),
+            created_at: Set(now),
+            updated_at: Set(now),
+            ..Default::default()
+        }
+        .insert(&txn)
+        .await?;
+
+        for item in data.items {
+            let subtotal = item.product.price_cents * item.quantity;
+            OrderItemActiveModel {
+                order_id: Set(order.id),
+                product_id: Set(Some(item.product.id)),
+                product_name: Set(item.product.name),
+                product_slug: Set(item.product.slug),
+                unit_price_cents: Set(item.product.price_cents),
+                quantity: Set(item.quantity),
+                subtotal_cents: Set(subtotal),
+                created_at: Set(now),
+                ..Default::default()
+            }
+            .insert(&txn)
+            .await?;
+        }
+
+        txn.commit().await?;
+        Ok(order)
+    }
+
+    pub async fn find_order(
+        &self,
+        number: &str,
+    ) -> anyhow::Result<Option<(order::Model, Vec<order_item::Model>)>> {
+        let Some(order) = OrderEntity::find()
+            .filter(OrderColumn::Number.eq(number))
+            .one(&self.db)
+            .await?
+        else {
+            return Ok(None);
+        };
+
+        let items = OrderItemEntity::find()
+            .filter(OrderItemColumn::OrderId.eq(order.id))
+            .order_by_asc(OrderItemColumn::Id)
+            .all(&self.db)
+            .await?;
+
+        Ok(Some((order, items)))
+    }
+}
+"#
+    .to_string()
+}
+
+fn shop_use_cases_mod_rs() -> String {
+    r#"pub mod checkout;
+"#
+    .to_string()
+}
+
+fn shop_checkout_use_case_rs() -> String {
+    r#"use crate::models::order;
+use crate::repositories::shop_repo::{CheckoutProduct, CreateOrder, ShopRepository};
+use rwfw_core::error::AppError;
+use serde::Deserialize;
+use std::collections::{BTreeMap, HashMap};
+
+#[derive(Debug, Deserialize)]
+pub struct CheckoutInput {
+    pub customer_name: String,
+    pub customer_email: String,
+    pub address_line: String,
+    pub city: String,
+    pub country: String,
+}
+
+pub struct CheckoutUseCase;
+
+impl CheckoutUseCase {
+    /// Run a fake checkout: validate the buyer fields, re-price the cart against
+    /// live product data, check inventory, and persist the order. The cart is the
+    /// server-side cookie map (`product_id -> quantity`) the route already parsed.
+    pub async fn execute(
+        &self,
+        repo: &ShopRepository,
+        input: CheckoutInput,
+        cart: &BTreeMap<i32, i32>,
+    ) -> Result<order::Model, AppError> {
+        let customer_name = input.customer_name.trim().to_string();
+        let customer_email = input.customer_email.trim().to_string();
+        let address_line = input.address_line.trim().to_string();
+        let city = input.city.trim().to_string();
+        let country = input.country.trim().to_string();
+
+        let mut errors = HashMap::new();
+        if customer_name.is_empty() {
+            errors.insert("customer_name".to_string(), vec!["Name is required".to_string()]);
+        }
+        if !customer_email.contains('@') {
+            errors.insert("customer_email".to_string(), vec!["Valid email is required".to_string()]);
+        }
+        if address_line.is_empty() {
+            errors.insert("address_line".to_string(), vec!["Address is required".to_string()]);
+        }
+        if city.is_empty() {
+            errors.insert("city".to_string(), vec!["City is required".to_string()]);
+        }
+        if country.is_empty() {
+            errors.insert("country".to_string(), vec!["Country is required".to_string()]);
+        }
+
+        let mut quantities = BTreeMap::new();
+        for (product_id, quantity) in cart {
+            if *quantity > 0 {
+                quantities.insert(*product_id, (*quantity).min(20));
+            }
+        }
+
+        if quantities.is_empty() {
+            errors.insert("items".to_string(), vec!["Cart is empty".to_string()]);
+        }
+
+        if !errors.is_empty() {
+            return Err(AppError::Validation(errors));
+        }
+
+        let ids = quantities.keys().copied().collect::<Vec<_>>();
+        let products = repo
+            .find_products_by_ids(&ids)
+            .await
+            .map_err(AppError::Internal)?;
+
+        if products.len() != ids.len() {
+            return Err(AppError::BadRequest("Cart contains unavailable products".into()));
+        }
+
+        let mut checkout_items = Vec::new();
+        let mut total_cents = 0;
+        let mut currency = "USD".to_string();
+
+        for product in products {
+            let quantity = quantities.get(&product.id).copied().unwrap_or(0);
+            if quantity <= 0 {
+                continue;
+            }
+            if product.inventory < quantity {
+                return Err(AppError::BadRequest(format!(
+                    "{} has only {} item(s) in stock",
+                    product.name, product.inventory
+                )));
+            }
+            currency = product.currency.clone();
+            total_cents += product.price_cents * quantity;
+            checkout_items.push(CheckoutProduct { product, quantity });
+        }
+
+        let raw = uuid::Uuid::new_v4().simple().to_string();
+        let number = format!("RW-{}", raw[..10].to_uppercase());
+
+        repo.create_order(CreateOrder {
+            number,
+            customer_name,
+            customer_email,
+            address_line,
+            city,
+            country,
+            total_cents,
+            currency,
+            items: checkout_items,
+        })
+        .await
+        .map_err(AppError::Internal)
+    }
+}
+"#
+    .to_string()
+}
+
 fn scaffold_model_template() -> String {
     r#"use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -2926,6 +3839,685 @@ fn scaffold_page_edit_template() -> String {
 
 fn scaffold_page_show_template() -> String {
     super::generate::BUILTIN_PAGE_SHOW_TEMPLATE.to_string()
+}
+
+// ---------------------------------------------------------------------------
+// Ecommerce example — Hotwire `View` routes (replace the Inertia handlers) and
+// `.html.j2` MiniJinja pages (replace the `.tsx` pages). All server-rendered.
+// ---------------------------------------------------------------------------
+
+fn shop_index_route_rs() -> String {
+    r#"use crate::repositories::shop_repo::ShopRepository;
+use axum::extract::{Query, State};
+use axum::response::{IntoResponse, Response};
+use axum::routing;
+use rwfw_core::app::AppState;
+use rwfw_core::error::AppError;
+use rwfw_core::view::View;
+use serde::Deserialize;
+
+#[derive(Debug, Deserialize)]
+struct ProductFilters {
+    q: Option<String>,
+    category: Option<String>,
+}
+
+pub fn route() -> axum::routing::MethodRouter<AppState> {
+    routing::get(get)
+}
+
+async fn get(
+    State(state): State<AppState>,
+    v: View,
+    Query(filters): Query<ProductFilters>,
+) -> Response {
+    let repo = ShopRepository::new(state.db.clone());
+    let categories = match repo.categories().await {
+        Ok(categories) => categories,
+        Err(error) => return AppError::Internal(error).into_response(),
+    };
+    let featured = match repo.featured_products().await {
+        Ok(products) => products,
+        Err(error) => return AppError::Internal(error).into_response(),
+    };
+    let products = match repo
+        .products(filters.q.as_deref(), filters.category.as_deref())
+        .await
+    {
+        Ok(products) => products,
+        Err(error) => return AppError::Internal(error).into_response(),
+    };
+
+    v.render(
+        "shop/index",
+        serde_json::json!({
+            "categories": categories,
+            "featured": featured,
+            "products": products,
+            "filters": {
+                "q": filters.q.unwrap_or_default(),
+                "category": filters.category.unwrap_or_default(),
+            }
+        }),
+    )
+}
+"#
+    .to_string()
+}
+
+fn shop_product_show_route_rs() -> String {
+    r#"use crate::repositories::shop_repo::ShopRepository;
+use axum::extract::{Path, State};
+use axum::response::{IntoResponse, Response};
+use axum::routing;
+use rwfw_core::app::AppState;
+use rwfw_core::error::AppError;
+use rwfw_core::view::View;
+
+pub fn route() -> axum::routing::MethodRouter<AppState> {
+    routing::get(get)
+}
+
+async fn get(
+    State(state): State<AppState>,
+    v: View,
+    Path(slug): Path<String>,
+) -> Response {
+    let repo = ShopRepository::new(state.db.clone());
+    let product = match repo.find_product_by_slug(&slug).await {
+        Ok(Some(product)) => product,
+        Ok(None) => return AppError::NotFound(format!("Product not found: {slug}")).into_response(),
+        Err(error) => return AppError::Internal(error).into_response(),
+    };
+
+    v.render(
+        "shop/products/show",
+        serde_json::json!({
+            "product": product,
+        }),
+    )
+}
+"#
+    .to_string()
+}
+
+fn shop_cart_route_rs() -> String {
+    r#"use crate::cart;
+use crate::repositories::shop_repo::ShopRepository;
+use axum::extract::State;
+use axum::http::HeaderMap;
+use axum::response::{IntoResponse, Response};
+use axum::routing;
+use rwfw_core::app::AppState;
+use rwfw_core::error::AppError;
+use rwfw_core::view::View;
+
+pub fn route() -> axum::routing::MethodRouter<AppState> {
+    routing::get(get)
+}
+
+async fn get(State(state): State<AppState>, headers: HeaderMap, v: View) -> Response {
+    let cart = cart::parse(&headers);
+    let repo = ShopRepository::new(state.db.clone());
+    let ids = cart.keys().copied().collect::<Vec<_>>();
+    let products = match repo.find_products_by_ids(&ids).await {
+        Ok(products) => products,
+        Err(error) => return AppError::Internal(error).into_response(),
+    };
+
+    let mut lines = Vec::new();
+    let mut total_cents = 0;
+    let mut currency = "USD".to_string();
+    for product in products {
+        let quantity = cart.get(&product.id).copied().unwrap_or(0);
+        if quantity <= 0 {
+            continue;
+        }
+        let subtotal = product.price_cents * quantity;
+        total_cents += subtotal;
+        currency = product.currency.clone();
+        lines.push(serde_json::json!({
+            "product": product,
+            "quantity": quantity,
+            "subtotal_cents": subtotal,
+        }));
+    }
+
+    v.render(
+        "shop/cart/index",
+        serde_json::json!({
+            "lines": lines,
+            "total_cents": total_cents,
+            "currency": currency,
+        }),
+    )
+}
+"#
+    .to_string()
+}
+
+fn shop_cart_add_route_rs() -> String {
+    r#"use crate::cart;
+use axum::extract::Form;
+use axum::http::HeaderMap;
+use axum::response::{IntoResponse, Redirect, Response};
+use axum::routing;
+use rwfw_core::app::AppState;
+use serde::Deserialize;
+
+#[derive(Debug, Deserialize)]
+struct AddToCartInput {
+    product_id: i32,
+    #[serde(default = "default_quantity")]
+    quantity: i32,
+}
+
+fn default_quantity() -> i32 {
+    1
+}
+
+pub fn route() -> axum::routing::MethodRouter<AppState> {
+    routing::post(post)
+}
+
+async fn post(headers: HeaderMap, Form(input): Form<AddToCartInput>) -> Response {
+    let cart = cart::parse(&headers);
+    let cart = cart::add(cart, input.product_id, input.quantity);
+
+    let mut response = Redirect::to("/shop/cart").into_response();
+    cart::apply(&mut response, &cart);
+    response
+}
+"#
+    .to_string()
+}
+
+fn shop_cart_update_route_rs() -> String {
+    r#"use crate::cart;
+use axum::extract::Form;
+use axum::http::HeaderMap;
+use axum::response::{IntoResponse, Redirect, Response};
+use axum::routing;
+use rwfw_core::app::AppState;
+use serde::Deserialize;
+
+#[derive(Debug, Deserialize)]
+struct UpdateCartInput {
+    product_id: i32,
+    quantity: i32,
+}
+
+pub fn route() -> axum::routing::MethodRouter<AppState> {
+    routing::post(post)
+}
+
+async fn post(headers: HeaderMap, Form(input): Form<UpdateCartInput>) -> Response {
+    let cart = cart::parse(&headers);
+    let cart = cart::set_quantity(cart, input.product_id, input.quantity);
+
+    let mut response = Redirect::to("/shop/cart").into_response();
+    cart::apply(&mut response, &cart);
+    response
+}
+"#
+    .to_string()
+}
+
+fn shop_checkout_route_rs() -> String {
+    r#"use crate::cart;
+use crate::repositories::shop_repo::ShopRepository;
+use crate::use_cases::checkout::{CheckoutInput, CheckoutUseCase};
+use axum::extract::{Form, State};
+use axum::http::{HeaderMap, StatusCode};
+use axum::response::{IntoResponse, Response};
+use axum::routing;
+use rwfw_core::app::AppState;
+use rwfw_core::error::AppError;
+use rwfw_core::inertia::Inertia;
+use rwfw_core::view::View;
+
+pub fn route() -> axum::routing::MethodRouter<AppState> {
+    routing::get(get).post(post)
+}
+
+async fn get(State(state): State<AppState>, headers: HeaderMap, v: View) -> Response {
+    let cart = cart::parse(&headers);
+    let repo = ShopRepository::new(state.db.clone());
+    let ids = cart.keys().copied().collect::<Vec<_>>();
+    let products = match repo.find_products_by_ids(&ids).await {
+        Ok(products) => products,
+        Err(error) => return AppError::Internal(error).into_response(),
+    };
+
+    let (lines, total_cents, currency) = summarize(&cart, products);
+
+    v.render(
+        "shop/checkout/index",
+        serde_json::json!({
+            "lines": lines,
+            "total_cents": total_cents,
+            "currency": currency,
+            "old": serde_json::Value::Null,
+        }),
+    )
+}
+
+async fn post(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    v: View,
+    Form(input): Form<CheckoutInput>,
+) -> Response {
+    let cart = cart::parse(&headers);
+    let repo = ShopRepository::new(state.db.clone());
+    let use_case = CheckoutUseCase;
+
+    let old = serde_json::json!({
+        "customer_name": input.customer_name,
+        "customer_email": input.customer_email,
+        "address_line": input.address_line,
+        "city": input.city,
+        "country": input.country,
+    });
+
+    match use_case.execute(&repo, input, &cart).await {
+        Ok(order) => {
+            // Clear the cart cookie and redirect to the confirmation page.
+            let mut response = Inertia::redirect_with_success(
+                &format!("/shop/orders/{}", order.number),
+                "Fake checkout completed",
+            );
+            cart::apply(&mut response, &std::collections::BTreeMap::new());
+            response
+        }
+        Err(AppError::Validation(errors)) => {
+            let ids = cart.keys().copied().collect::<Vec<_>>();
+            let products = match repo.find_products_by_ids(&ids).await {
+                Ok(products) => products,
+                Err(error) => return AppError::Internal(error).into_response(),
+            };
+            let (lines, total_cents, currency) = summarize(&cart, products);
+            v.render_status(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "shop/checkout/index",
+                serde_json::json!({
+                    "lines": lines,
+                    "total_cents": total_cents,
+                    "currency": currency,
+                    "old": old,
+                    "errors": rwfw_core::validation::first_messages(errors),
+                }),
+            )
+        }
+        Err(AppError::BadRequest(message)) => {
+            Inertia::redirect_with_error("/shop/cart", message)
+        }
+        Err(error) => error.into_response(),
+    }
+}
+
+fn summarize(
+    cart: &std::collections::BTreeMap<i32, i32>,
+    products: Vec<crate::models::product::Model>,
+) -> (Vec<serde_json::Value>, i32, String) {
+    let mut lines = Vec::new();
+    let mut total_cents = 0;
+    let mut currency = "USD".to_string();
+    for product in products {
+        let quantity = cart.get(&product.id).copied().unwrap_or(0);
+        if quantity <= 0 {
+            continue;
+        }
+        let subtotal = product.price_cents * quantity;
+        total_cents += subtotal;
+        currency = product.currency.clone();
+        lines.push(serde_json::json!({
+            "product": product,
+            "quantity": quantity,
+            "subtotal_cents": subtotal,
+        }));
+    }
+    (lines, total_cents, currency)
+}
+"#
+    .to_string()
+}
+
+fn shop_order_show_route_rs() -> String {
+    r#"use crate::repositories::shop_repo::ShopRepository;
+use axum::extract::{Path, State};
+use axum::response::{IntoResponse, Response};
+use axum::routing;
+use rwfw_core::app::AppState;
+use rwfw_core::error::AppError;
+use rwfw_core::view::View;
+
+pub fn route() -> axum::routing::MethodRouter<AppState> {
+    routing::get(get)
+}
+
+async fn get(
+    State(state): State<AppState>,
+    v: View,
+    Path(number): Path<String>,
+) -> Response {
+    let repo = ShopRepository::new(state.db.clone());
+    let (order, items) = match repo.find_order(&number).await {
+        Ok(Some(order)) => order,
+        Ok(None) => return AppError::NotFound(format!("Order not found: {number}")).into_response(),
+        Err(error) => return AppError::Internal(error).into_response(),
+    };
+
+    v.render(
+        "shop/orders/show",
+        serde_json::json!({
+            "order": order,
+            "items": items,
+        }),
+    )
+}
+"#
+    .to_string()
+}
+
+fn shop_index_page_template() -> String {
+    r#"{% extends "layouts/app.html.j2" %}
+{% block title %}Shop{% endblock %}
+{% block content %}
+<div class="max-w-5xl">
+  <div class="flex justify-between items-center mb-8">
+    <h1 class="text-3xl font-bold">Shop</h1>
+    <a href="/shop/cart" class="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200">View cart</a>
+  </div>
+
+  <form method="get" action="/shop" class="mb-8 flex flex-wrap gap-3 items-end">
+    <div class="flex-1 min-w-[200px]">
+      <label for="q" class="block text-sm font-medium text-gray-700">Search</label>
+      <input id="q" name="q" type="search" value="{{ filters.q }}" placeholder="Search products"
+             class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500">
+    </div>
+    <div>
+      <label for="category" class="block text-sm font-medium text-gray-700">Category</label>
+      <select id="category" name="category"
+              class="mt-1 block rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500">
+        <option value="">All categories</option>
+        {% for category in categories %}
+        <option value="{{ category.slug }}" {{ 'selected' if filters.category == category.slug }}>{{ category.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <button type="submit" class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">Filter</button>
+    {% if filters.q or filters.category %}
+    <a href="/shop" class="px-4 py-2 text-sm text-gray-600 hover:underline">Reset</a>
+    {% endif %}
+  </form>
+
+  {% if not filters.q and not filters.category and featured | length > 0 %}
+  <section class="mb-10">
+    <h2 class="text-xl font-semibold mb-4">Featured</h2>
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+      {% for product in featured %}
+      {% include "shop/_product_card.html.j2" %}
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  <section>
+    <h2 class="text-xl font-semibold mb-4">All products</h2>
+    {% if products | length == 0 %}
+      <p class="text-gray-500">No products match your filters.</p>
+    {% else %}
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+      {% for product in products %}
+      {% include "shop/_product_card.html.j2" %}
+      {% endfor %}
+    </div>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}
+"#
+    .to_string()
+}
+
+fn shop_product_card_template() -> String {
+    r#"<article class="flex flex-col bg-white rounded-lg shadow-sm border overflow-hidden">
+  <a href="/shop/products/{{ product.slug }}" class="block">
+    <img src="{{ product.image_url }}" alt="{{ product.name }}" class="h-48 w-full object-cover">
+  </a>
+  <div class="flex flex-1 flex-col p-4">
+    <a href="/shop/products/{{ product.slug }}">
+      <h3 class="text-lg font-semibold hover:text-blue-600 transition-colors">{{ product.name }}</h3>
+    </a>
+    <p class="mt-1 text-sm text-gray-500 line-clamp-2 flex-1">{{ product.description }}</p>
+    <div class="mt-3 flex items-center justify-between">
+      <span class="text-lg font-bold">{{ "%.2f" | format(product.price_cents / 100) }} {{ product.currency }}</span>
+      <form method="post" action="/shop/cart/add">
+        <input type="hidden" name="_csrf" value="{{ csrf_token }}">
+        <input type="hidden" name="product_id" value="{{ product.id }}">
+        <input type="hidden" name="quantity" value="1">
+        <button type="submit" data-turbo-submits-with="Adding..."
+                class="px-3 py-1.5 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700 disabled:opacity-50">Add to cart</button>
+      </form>
+    </div>
+  </div>
+</article>
+"#
+    .to_string()
+}
+
+fn shop_product_show_page_template() -> String {
+    r#"{% extends "layouts/app.html.j2" %}
+{% block title %}{{ product.name }}{% endblock %}
+{% block content %}
+<div class="max-w-4xl">
+  <div class="mb-6">
+    <a href="/shop" class="text-blue-600 hover:underline text-sm">&larr; Back to shop</a>
+  </div>
+
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-8 bg-white rounded-lg shadow-sm border p-8">
+    <img src="{{ product.image_url }}" alt="{{ product.name }}" class="w-full rounded-lg object-cover">
+    <div class="flex flex-col">
+      <h1 class="text-3xl font-bold mb-4">{{ product.name }}</h1>
+      <p class="text-2xl font-semibold mb-4">{{ "%.2f" | format(product.price_cents / 100) }} {{ product.currency }}</p>
+      <p class="text-gray-600 mb-6">{{ product.description }}</p>
+      <p class="text-sm text-gray-400 mb-6">
+        {% if product.inventory > 0 %}{{ product.inventory }} in stock{% else %}Out of stock{% endif %}
+      </p>
+      {% if product.inventory > 0 %}
+      <form method="post" action="/shop/cart/add" class="flex items-end gap-4">
+        <input type="hidden" name="_csrf" value="{{ csrf_token }}">
+        <input type="hidden" name="product_id" value="{{ product.id }}">
+        <div>
+          <label for="quantity" class="block text-sm font-medium text-gray-700">Quantity</label>
+          <input id="quantity" name="quantity" type="number" min="1" max="20" value="1"
+                 class="mt-1 block w-24 rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500">
+        </div>
+        <button type="submit" data-turbo-submits-with="Adding..."
+                class="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50">Add to cart</button>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}
+"#
+    .to_string()
+}
+
+fn shop_cart_page_template() -> String {
+    r#"{% extends "layouts/app.html.j2" %}
+{% block title %}Cart{% endblock %}
+{% block content %}
+<div class="max-w-4xl">
+  <div class="flex justify-between items-center mb-8">
+    <h1 class="text-3xl font-bold">Your cart</h1>
+    <a href="/shop" class="text-blue-600 hover:underline text-sm">Continue shopping</a>
+  </div>
+
+  {% if lines | length == 0 %}
+    <p class="text-gray-500">Your cart is empty. <a href="/shop" class="text-blue-600 hover:underline">Browse products</a>.</p>
+  {% else %}
+  <div class="overflow-hidden rounded-lg border bg-white shadow-sm">
+    <table class="min-w-full divide-y divide-gray-200">
+      <thead class="bg-gray-50">
+        <tr>
+          <th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Product</th>
+          <th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Price</th>
+          <th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Quantity</th>
+          <th class="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">Subtotal</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-gray-100">
+        {% for line in lines %}
+        <tr>
+          <td class="px-4 py-3">
+            <a href="/shop/products/{{ line.product.slug }}" class="font-medium text-gray-900 hover:text-blue-600">{{ line.product.name }}</a>
+          </td>
+          <td class="px-4 py-3 text-sm text-gray-500">{{ "%.2f" | format(line.product.price_cents / 100) }} {{ line.product.currency }}</td>
+          <td class="px-4 py-3">
+            <form method="post" action="/shop/cart/update" class="flex items-center gap-2">
+              <input type="hidden" name="_csrf" value="{{ csrf_token }}">
+              <input type="hidden" name="product_id" value="{{ line.product.id }}">
+              <input name="quantity" type="number" min="0" max="20" value="{{ line.quantity }}"
+                     class="w-20 rounded-md border border-gray-300 px-2 py-1 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500">
+              <button type="submit" class="text-sm text-blue-600 hover:underline">Update</button>
+            </form>
+          </td>
+          <td class="px-4 py-3 text-right text-sm text-gray-900">{{ "%.2f" | format(line.subtotal_cents / 100) }} {{ currency }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+      <tfoot class="bg-gray-50">
+        <tr>
+          <td colspan="3" class="px-4 py-3 text-right font-semibold">Total</td>
+          <td class="px-4 py-3 text-right font-bold">{{ "%.2f" | format(total_cents / 100) }} {{ currency }}</td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+
+  <div class="mt-6 flex justify-end">
+    <a href="/shop/checkout" class="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">Proceed to checkout</a>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
+"#
+    .to_string()
+}
+
+fn shop_checkout_page_template() -> String {
+    r#"{% extends "layouts/app.html.j2" %}
+{% block title %}Checkout{% endblock %}
+{% block content %}
+<div class="max-w-4xl">
+  <div class="mb-6">
+    <a href="/shop/cart" class="text-blue-600 hover:underline text-sm">&larr; Back to cart</a>
+  </div>
+  <h1 class="text-3xl font-bold mb-8">Checkout</h1>
+
+  {% if lines | length == 0 %}
+    <p class="text-gray-500">Your cart is empty. <a href="/shop" class="text-blue-600 hover:underline">Browse products</a>.</p>
+  {% else %}
+  <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+    <form method="post" action="/shop/checkout" class="md:col-span-2 bg-white rounded-lg shadow-sm border p-8 space-y-6">
+      <input type="hidden" name="_csrf" value="{{ csrf_token }}">
+      <x-field name="customer_name" label="Full name" :value="old.customer_name | default('')" />
+      <x-field name="customer_email" label="Email" type="email" :value="old.customer_email | default('')" />
+      <x-field name="address_line" label="Address" :value="old.address_line | default('')" />
+      <div class="grid grid-cols-2 gap-4">
+        <x-field name="city" label="City" :value="old.city | default('')" />
+        <x-field name="country" label="Country" :value="old.country | default('')" />
+      </div>
+      {% if errors.items %}<p class="text-sm text-red-600">{{ errors.items }}</p>{% endif %}
+      <button type="submit" data-turbo-submits-with="Placing order..."
+              class="w-full px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50">Place order (fake)</button>
+    </form>
+
+    <aside class="bg-white rounded-lg shadow-sm border p-6 h-fit">
+      <h2 class="text-lg font-semibold mb-4">Order summary</h2>
+      <ul class="space-y-2 text-sm">
+        {% for line in lines %}
+        <li class="flex justify-between">
+          <span>{{ line.quantity }} &times; {{ line.product.name }}</span>
+          <span>{{ "%.2f" | format(line.subtotal_cents / 100) }}</span>
+        </li>
+        {% endfor %}
+      </ul>
+      <div class="mt-4 border-t pt-4 flex justify-between font-bold">
+        <span>Total</span>
+        <span>{{ "%.2f" | format(total_cents / 100) }} {{ currency }}</span>
+      </div>
+    </aside>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
+"#
+    .to_string()
+}
+
+fn shop_order_show_page_template() -> String {
+    r#"{% extends "layouts/app.html.j2" %}
+{% block title %}Order {{ order.number }}{% endblock %}
+{% block content %}
+<div class="max-w-3xl">
+  <div class="mb-6">
+    <a href="/shop" class="text-blue-600 hover:underline text-sm">&larr; Back to shop</a>
+  </div>
+
+  <div class="bg-white rounded-lg shadow-sm border p-8">
+    <div class="mb-6">
+      <p class="text-sm uppercase tracking-wider text-green-600 font-semibold">Order confirmed</p>
+      <h1 class="text-3xl font-bold mt-1">Order {{ order.number }}</h1>
+      <p class="mt-2 text-gray-500">Thanks, {{ order.customer_name }}. A confirmation was sent to {{ order.customer_email }}.</p>
+    </div>
+
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8 text-sm">
+      <div>
+        <p class="font-semibold text-gray-700">Shipping to</p>
+        <p class="text-gray-600">{{ order.address_line }}</p>
+        <p class="text-gray-600">{{ order.city }}, {{ order.country }}</p>
+      </div>
+      <div>
+        <p class="font-semibold text-gray-700">Status</p>
+        <p class="text-gray-600">{{ order.status }}</p>
+      </div>
+    </div>
+
+    <div class="overflow-hidden rounded-lg border">
+      <table class="min-w-full divide-y divide-gray-200">
+        <thead class="bg-gray-50">
+          <tr>
+            <th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Item</th>
+            <th class="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Qty</th>
+            <th class="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">Subtotal</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-100">
+          {% for item in items %}
+          <tr>
+            <td class="px-4 py-3 text-sm text-gray-900">{{ item.product_name }}</td>
+            <td class="px-4 py-3 text-sm text-gray-500">{{ item.quantity }}</td>
+            <td class="px-4 py-3 text-right text-sm text-gray-900">{{ "%.2f" | format(item.subtotal_cents / 100) }} {{ order.currency }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+        <tfoot class="bg-gray-50">
+          <tr>
+            <td colspan="2" class="px-4 py-3 text-right font-semibold">Total</td>
+            <td class="px-4 py-3 text-right font-bold">{{ "%.2f" | format(order.total_cents / 100) }} {{ order.currency }}</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}
+"#
+    .to_string()
 }
 
 fn to_kebab(value: &str) -> String {
