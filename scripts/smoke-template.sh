@@ -75,7 +75,7 @@ test -f Dockerfile.prod
 test -f compose.yaml
 test -f compose.dev.yaml
 test -f docker/entrypoint.sh
-test -f .rwfw/templates/page_show.tsx.tera
+test -f .rwfw/templates/page_show.html.j2.tera
 grep -q "rwfw seed admin" README.md
 
 cargo check
@@ -92,26 +92,19 @@ run_rwfw generate scaffold Product --module blog \
   available_on:date \
   published_at:datetime
 
-test -f crates/modules/blog/web/pages/products/Show.tsx
+test -f crates/modules/blog/web/templates/products/show.html.j2
 test -f 'crates/modules/blog/src/routes/products/[id].rs'
 grep -q "DOUBLE PRECISION" crates/modules/blog/src/migrations/*_create_products.sql
 grep -q "summary TEXT" crates/modules/blog/src/migrations/*_create_products.sql
 grep -q "DATE NOT NULL" crates/modules/blog/src/migrations/*_create_products.sql
 cargo check
 
+# Generated apps are npm-free (Hotwire + MiniJinja). RWFW_SMOKE_SKIP_NPM is kept
+# for CI compatibility; with it set we stop after the cargo checks above.
 if [[ "${RWFW_SMOKE_SKIP_NPM:-0}" == "1" ]]; then
-  echo "Skipping npm smoke checks because RWFW_SMOKE_SKIP_NPM=1"
+  echo "Skipping runtime smoke checks because RWFW_SMOKE_SKIP_NPM=1"
   exit 0
 fi
-
-if ! command -v npm >/dev/null 2>&1; then
-  echo "Skipping npm smoke checks because npm is not available"
-  exit 0
-fi
-
-npm install
-npm run build
-npm run build:ssr
 
 if [[ "${RWFW_SMOKE_SKIP_DOCKER:-0}" == "1" ]]; then
   echo "Skipping docker smoke checks because RWFW_SMOKE_SKIP_DOCKER=1"
@@ -126,7 +119,6 @@ fi
 export RWFW_DEV_DB_PORT="${RWFW_DEV_DB_PORT:-$(pick_port)}"
 export RWFW_PGADMIN_PORT="${RWFW_PGADMIN_PORT:-$(pick_port)}"
 export RWFW_APP_PORT="${RWFW_APP_PORT:-$(pick_port)}"
-export RWFW_VITE_PORT="${RWFW_VITE_PORT:-$(pick_port)}"
 export RWFW__DATABASE__URL="postgres://rwfw:rwfw@localhost:${RWFW_DEV_DB_PORT}/${APP_NAME//-/_}_dev"
 export RWFW__SERVER__PORT="$RWFW_APP_PORT"
 
@@ -136,33 +128,14 @@ run_rwfw seed admin --email "$ADMIN_EMAIL" --password "$ADMIN_PASSWORD" --update
 
 RWFW__DATABASE__URL="$RWFW__DATABASE__URL" \
 RWFW__SERVER__PORT="$RWFW_APP_PORT" \
-RWFW_VITE_PORT="$RWFW_VITE_PORT" \
 run_rwfw dev >"$TMP_DIR/rwfw-dev.log" 2>&1 &
 DEV_PID="$!"
 
 wait_for_url "http://localhost:${RWFW_APP_PORT}/health"
 wait_for_url "http://localhost:${RWFW_APP_PORT}/"
-curl -fsS "http://localhost:${RWFW_APP_PORT}/blog/posts" >/dev/null
-
-if command -v npx >/dev/null 2>&1 && [[ "${RWFW_SMOKE_SKIP_PLAYWRIGHT:-0}" != "1" ]]; then
-  (
-    PLAYWRIGHT_DIR="$TMP_DIR/playwright"
-    mkdir -p "$PLAYWRIGHT_DIR"
-    cp "$ROOT_DIR/scripts/smoke-template.spec.cjs" "$PLAYWRIGHT_DIR/smoke-template.spec.cjs"
-    cd "$PLAYWRIGHT_DIR"
-    "$ROOT_DIR/node_modules/.bin/playwright" install chromium >/dev/null
-    RWFW_SMOKE_BASE_URL="http://localhost:${RWFW_APP_PORT}" \
-      RWFW_SMOKE_ADMIN_EMAIL="$ADMIN_EMAIL" \
-      RWFW_SMOKE_ADMIN_PASSWORD="$ADMIN_PASSWORD" \
-      RWFW_PLAYWRIGHT_TEST_MODULE="$ROOT_DIR/node_modules/@playwright/test" \
-      "$ROOT_DIR/node_modules/.bin/playwright" test smoke-template.spec.cjs \
-        --browser=chromium \
-        --reporter=line \
-        --workers=1 \
-        --timeout=60000
-  )
-else
-  echo "Skipping Playwright smoke checks because npx is unavailable or disabled"
-fi
+# Server-rendered HTML pages (no client bundle, no SSR node process).
+curl -fsS "http://localhost:${RWFW_APP_PORT}/blog/posts" | grep -q "Posts"
+curl -fsS "http://localhost:${RWFW_APP_PORT}/vendor/turbo.min.js" >/dev/null
+curl -fsS "http://localhost:${RWFW_APP_PORT}/assets/app.css" >/dev/null
 
 echo "Template smoke test passed."

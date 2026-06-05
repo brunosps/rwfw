@@ -5,6 +5,7 @@ pub mod csrf;
 pub mod db;
 pub mod error;
 pub mod events;
+pub mod forms;
 pub mod health;
 pub mod inertia;
 pub mod logging;

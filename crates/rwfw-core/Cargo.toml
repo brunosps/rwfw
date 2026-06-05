@@ -34,3 +34,6 @@ rwfw-shared = { path = "../rwfw-shared" }
 hyper = "1"
 http = "1"
 reqwest = { version = "0.12", features = ["json"] }
+
+[dev-dependencies]
+serde_urlencoded = "0.7"
