@@ -63,7 +63,7 @@ pub async fn inertia_shared_middleware(
     next: Next,
 ) -> Response {
     let path = request.uri().path();
-    if path.starts_with("/assets/") || path == "/health" {
+    if path.starts_with("/assets/") || path.starts_with("/vendor/") || path == "/health" {
         return next.run(request).await;
     }
 
@@ -92,7 +92,12 @@ pub async fn inertia_shared_middleware(
     let flash_cookie = cookie_value(request.headers(), FLASH_COOKIE).map(str::to_string);
     let flash = flash_cookie.as_deref().and_then(flash_from_cookie);
 
-    let shared = build_shared_props(&state, current_user, flash, validation_errors);
+    let csrf_token = request
+        .extensions()
+        .get::<crate::csrf::CsrfToken>()
+        .map(|token| token.0.clone())
+        .unwrap_or_default();
+    let shared = build_shared_props(&state, current_user, flash, validation_errors, csrf_token);
     request.extensions_mut().insert(InertiaSharedProps(shared));
 
     let mut response = next.run(request).await;
@@ -114,6 +119,7 @@ fn build_shared_props(
     current_user: Option<CurrentUser>,
     flash: Option<FlashData>,
     errors: HashMap<String, String>,
+    csrf_token: String,
 ) -> serde_json::Value {
     let auth = current_user.map(|user| AuthData {
         user: SharedAuthUser {
@@ -129,7 +135,7 @@ fn build_shared_props(
         "auth": auth,
         "flash": flash,
         "errors": errors,
-        "csrf_token": crate::csrf::generate_token(),
+        "csrf_token": csrf_token,
         "modules": state.modules_nav(),
     })
 }

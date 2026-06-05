@@ -66,7 +66,6 @@ impl RwfwApp {
     }
 
     pub async fn build(self) -> anyhow::Result<Router> {
-        let is_development = self.config.is_development();
         let db = crate::db::connect(&self.config).await?;
         let events = Arc::new(EventBus::new());
 
@@ -131,14 +130,21 @@ impl RwfwApp {
         router = router.route("/health", axum::routing::get(health_handler));
         router = router.route("/favicon.ico", axum::routing::get(favicon_handler));
 
-        if !is_development {
-            router = router.nest_service("/assets", ServeDir::new("dist/client/assets"));
+        // Static assets (vendored JS, compiled CSS) served from the app web root
+        // in both dev and prod — no npm bundler involved.
+        if let Some(app_web) = &self.app_web_root {
+            router = router
+                .nest_service("/vendor", ServeDir::new(app_web.join("vendor")))
+                .nest_service("/assets", ServeDir::new(app_web.join("assets")));
         }
 
         router = router.layer(middleware::from_fn_with_state(
             state.clone(),
             crate::inertia::shared::inertia_shared_middleware,
         ));
+        // CSRF runs outermost: it issues the token (cookie + request extension)
+        // before shared props read it, and verifies double-submit on form posts.
+        router = router.layer(middleware::from_fn(crate::csrf::csrf_middleware));
 
         let router = router.with_state(state);
 
