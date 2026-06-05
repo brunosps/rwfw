@@ -30,6 +30,10 @@ impl Module for HomeModule {
             icon: Some("home".to_string()),
         }]
     }
+
+    fn web_root(&self) -> Option<std::path::PathBuf> {
+        Some(std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("web"))
+    }
 }
 
 inventory::submit! {

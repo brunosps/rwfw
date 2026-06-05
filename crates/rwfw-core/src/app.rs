@@ -4,7 +4,9 @@ use crate::inertia::SharedData;
 use crate::module::{Module, NavItem};
 use axum::Router;
 use axum::middleware;
+use crate::view::{TemplateRoot, ViewRenderer};
 use sea_orm::DatabaseConnection;
+use std::path::PathBuf;
 use std::sync::Arc;
 use tower_http::services::ServeDir;
 
@@ -14,6 +16,7 @@ pub struct AppState {
     pub db: DatabaseConnection,
     pub events: Arc<EventBus>,
     pub shared_data: Arc<SharedData>,
+    pub view: ViewRenderer,
     modules_nav: Arc<Vec<ModuleNav>>,
 }
 
@@ -37,6 +40,7 @@ pub struct AppContext {
 pub struct RwfwApp {
     modules: Vec<Box<dyn Module>>,
     config: AppConfig,
+    app_web_root: Option<PathBuf>,
 }
 
 impl RwfwApp {
@@ -44,7 +48,16 @@ impl RwfwApp {
         Self {
             modules: Vec::new(),
             config,
+            app_web_root: None,
         }
+    }
+
+    /// Set the app-level web root (containing `templates/`, `vendor/`, `assets/`).
+    /// Callers pass an absolute path (e.g. via `CARGO_MANIFEST_DIR`) so template
+    /// resolution is independent of the process working directory.
+    pub fn web_root(mut self, path: impl Into<PathBuf>) -> Self {
+        self.app_web_root = Some(path.into());
+        self
     }
 
     pub fn module(mut self, module: Box<dyn Module>) -> Self {
@@ -58,11 +71,17 @@ impl RwfwApp {
         let events = Arc::new(EventBus::new());
 
         let mut modules_nav = Vec::new();
+        let mut template_roots: Vec<TemplateRoot> = Vec::new();
         let mut router = Router::new();
 
         for module in &self.modules {
             let name = module.name().to_string();
             let prefix = format!("/{}", name);
+
+            // Register this module's template root (namespaced by module name).
+            if let Some(web) = module.web_root() {
+                template_roots.push(TemplateRoot::module(&name, web.join("templates")));
+            }
 
             tracing::info!(module = %name, prefix = %prefix, "Mounting module");
 
@@ -91,6 +110,12 @@ impl RwfwApp {
             }
         }
 
+        // App-level templates (layouts, shared partials) are the fallback root.
+        if let Some(app_web) = &self.app_web_root {
+            template_roots.push(TemplateRoot::app(app_web.join("templates")));
+        }
+        let view = ViewRenderer::new(template_roots);
+
         let shared_data = Arc::new(SharedData::default());
 
         let state = AppState {
@@ -98,6 +123,7 @@ impl RwfwApp {
             db,
             events,
             shared_data,
+            view,
             modules_nav: Arc::new(modules_nav),
         };
 

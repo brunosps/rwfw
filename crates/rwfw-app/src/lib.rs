@@ -21,7 +21,8 @@ pub fn registered_modules() -> Vec<Box<dyn Module>> {
 pub async fn build_router(config: AppConfig) -> anyhow::Result<Router> {
     init_ssr_if_available(&config);
 
-    let mut app_builder = rwfw_core::app::RwfwApp::new(config);
+    let mut app_builder = rwfw_core::app::RwfwApp::new(config)
+        .web_root(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("web"));
 
     for module in registered_modules() {
         app_builder = app_builder.module(module);

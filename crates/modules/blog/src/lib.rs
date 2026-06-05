@@ -50,6 +50,10 @@ impl Module for BlogModule {
             Permission::new("blog.posts.delete", "Delete blog posts"),
         ]
     }
+
+    fn web_root(&self) -> Option<std::path::PathBuf> {
+        Some(std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("web"))
+    }
 }
 
 inventory::submit! {

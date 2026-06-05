@@ -17,6 +17,7 @@ pub mod repository;
 pub mod ssr;
 pub mod use_case;
 pub mod validation;
+pub mod view;
 pub mod vite;
 
 pub mod prelude {
@@ -24,6 +25,7 @@ pub mod prelude {
     pub use crate::auth::CurrentUser;
     pub use crate::error::AppError;
     pub use crate::inertia::Inertia;
+    pub use crate::view::View;
     pub use crate::migration::Migration;
     pub use crate::module::{Module, ModuleRegistration, NavItem};
     pub use crate::use_case::UseCase;
