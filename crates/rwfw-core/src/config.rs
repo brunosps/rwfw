@@ -71,4 +71,14 @@ impl AppConfig {
     pub fn is_development(&self) -> bool {
         std::env::var("RWFW_ENV").unwrap_or_else(|_| "development".into()) == "development"
     }
+
+    /// Build a minimal configuration for tests, overriding only the database URL.
+    /// Avoids mutating process-global environment variables across parallel tests.
+    #[doc(hidden)]
+    pub fn for_test(database_url: &str) -> anyhow::Result<Self> {
+        let config = Config::builder()
+            .set_override("database.url", database_url)?
+            .build()?;
+        Ok(Self { inner: config })
+    }
 }
