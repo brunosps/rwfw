@@ -40,6 +40,14 @@ jobs:
       - name: Test framework (with Postgres)
         run: cargo test --workspace
 
+      - name: Install Chromium for browser e2e
+        uses: browser-actions/setup-chrome@v1
+
+      - name: Browser e2e (chromiumoxide — no Node/Playwright)
+        env:
+          RWFW_E2E: "1"
+        run: cargo test -p rwfw-app --test e2e
+
       - name: Smoke generated template
         env:
           RWFW_SMOKE_SKIP_DOCKER: "1"
