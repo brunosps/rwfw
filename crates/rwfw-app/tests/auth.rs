@@ -74,13 +74,17 @@ async fn login_invalid_credentials_re_renders_422() {
 async fn register_creates_user_and_logs_in() {
     let app = app_or_skip!("register_creates_user_and_logs_in");
 
+    // Unique email per process so the persistent test DB doesn't cause an
+    // "email already taken" 422 on re-runs.
+    let email = format!("register-{}@test.local", std::process::id());
+
     let token = app.csrf_token("/auth/register").await;
     let res = app
         .post("/auth/register")
         .header("x-csrf-token", &token)
         .form(&[
             ("name", "New Person"),
-            ("email", "register-new@test.local"),
+            ("email", email.as_str()),
             ("password", "supersecret123"),
             ("password_confirmation", "supersecret123"),
         ])

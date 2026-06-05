@@ -50,8 +50,16 @@ impl ViewRenderer {
                     notifier.watch_path(&root.dir, true);
                 }
             }
-            let roots = roots.clone();
-            env.set_loader(move |name| load_template(&roots, name));
+
+            // Discover `<x-...>` components and wire the tag compiler + attrs filter.
+            let registry = super::tags::ComponentRegistry::scan(&roots);
+            env.add_filter("attrs", super::tags::attrs_filter);
+
+            let loader_roots = roots.clone();
+            env.set_loader(move |name| match load_template(&loader_roots, name) {
+                Ok(Some(source)) => Ok(Some(super::tags::compile(&source, &registry))),
+                other => other,
+            });
             Ok(env)
         });
         Self {
@@ -162,5 +170,52 @@ mod tests {
             .render_to_string("nope", minijinja::context! {})
             .unwrap_err();
         assert_eq!(err.kind(), ErrorKind::TemplateNotFound);
+    }
+
+    #[test]
+    fn renders_component_with_props_content_and_attrs() {
+        let dir = temp_dir();
+        std::fs::create_dir_all(dir.join("components/button")).unwrap();
+        std::fs::write(
+            dir.join("components/button/index.html.j2"),
+            "{#def kind=\"primary\" #}\n<button {{ __attrs | attrs(class=\"btn btn-\" ~ kind) }}>{{ content }}</button>",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("page.html.j2"),
+            "<x-button kind=\"danger\" id=\"go\"><strong>Delete</strong></x-button>",
+        )
+        .unwrap();
+
+        let renderer = ViewRenderer::new(vec![TemplateRoot::app(&dir)]);
+        let html = renderer.render_to_string("page", minijinja::context! {}).unwrap();
+
+        assert!(html.contains("class=\"btn btn-danger\""), "got: {html}");
+        assert!(html.contains("id=\"go\""), "got: {html}");
+        // HTML content is not double-escaped.
+        assert!(html.contains("<strong>Delete</strong>"), "got: {html}");
+    }
+
+    #[test]
+    fn renders_named_slot_with_html() {
+        let dir = temp_dir();
+        std::fs::create_dir_all(dir.join("components/card")).unwrap();
+        std::fs::write(
+            dir.join("components/card/index.html.j2"),
+            "{#def title #}\n<div class=\"card\"><h2>{{ title }}</h2>{{ content }}{% if slots.footer %}<footer>{{ slots.footer }}</footer>{% endif %}</div>",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("page.html.j2"),
+            "<x-card title=\"Hello\"><p>Body</p><x-slot name=\"footer\"><a href=\"/x\">Foot</a></x-slot></x-card>",
+        )
+        .unwrap();
+
+        let renderer = ViewRenderer::new(vec![TemplateRoot::app(&dir)]);
+        let html = renderer.render_to_string("page", minijinja::context! {}).unwrap();
+
+        assert!(html.contains("<h2>Hello</h2>"), "got: {html}");
+        assert!(html.contains("<p>Body</p>"), "got: {html}");
+        assert!(html.contains("<footer><a href=\"/x\">Foot</a></footer>"), "got: {html}");
     }
 }

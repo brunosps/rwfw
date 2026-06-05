@@ -8,6 +8,7 @@
 
 mod extractor;
 mod renderer;
+pub mod tags;
 pub mod turbo;
 
 pub use extractor::View;
