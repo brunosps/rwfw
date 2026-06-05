@@ -63,6 +63,14 @@ impl ComponentRegistry {
     fn get(&self, name: &str) -> Option<&ComponentDef> {
         self.defs.get(name)
     }
+
+    /// All components and their declared props, sorted by name.
+    pub fn list(&self) -> Vec<(String, Vec<(String, Option<String>)>)> {
+        self.defs
+            .iter()
+            .map(|(name, def)| (name.clone(), def.props.clone()))
+            .collect()
+    }
 }
 
 fn scan_dir(dir: &Path, defs: &mut BTreeMap<String, ComponentDef>) {

@@ -133,6 +133,7 @@ impl RwfwApp {
         // Add health check
         router = router.route("/health", axum::routing::get(health_handler));
         router = router.route("/favicon.ico", axum::routing::get(favicon_handler));
+        router = router.route("/components", axum::routing::get(components_catalog));
 
         // Static assets (vendored JS, compiled CSS) served from the app web root
         // in both dev and prod — no npm bundler involved.
@@ -154,6 +155,22 @@ impl RwfwApp {
 
         Ok(router)
     }
+}
+
+/// Dev-only component catalog: lists discovered `<x-...>` components + props.
+async fn components_catalog(
+    state: axum::extract::State<AppState>,
+    v: crate::view::View,
+) -> axum::response::Response {
+    use axum::response::IntoResponse;
+    if !state.config.is_development() {
+        return axum::http::StatusCode::NOT_FOUND.into_response();
+    }
+    let components = state.view.components();
+    v.render(
+        "components_catalog",
+        serde_json::json!({ "components": components }),
+    )
 }
 
 async fn health_handler() -> axum::Json<serde_json::Value> {

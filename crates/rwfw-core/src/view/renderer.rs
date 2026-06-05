@@ -36,10 +36,12 @@ impl TemplateRoot {
 #[derive(Clone)]
 pub struct ViewRenderer {
     reloader: Arc<AutoReloader>,
+    roots: Arc<Vec<TemplateRoot>>,
 }
 
 impl ViewRenderer {
     pub fn new(roots: Vec<TemplateRoot>) -> Self {
+        let stored_roots = Arc::new(roots.clone());
         let reloader = AutoReloader::new(move |notifier| {
             let mut env = Environment::new();
             // Forgiving for HTML authors: `undefined.attr` yields undefined (and
@@ -64,7 +66,26 @@ impl ViewRenderer {
         });
         Self {
             reloader: Arc::new(reloader),
+            roots: stored_roots,
         }
+    }
+
+    /// List discovered `<x-...>` components and their declared props (for the
+    /// `/components` catalog). Re-scans the roots on demand.
+    pub fn components(&self) -> serde_json::Value {
+        let registry = super::tags::ComponentRegistry::scan(&self.roots);
+        let list: Vec<serde_json::Value> = registry
+            .list()
+            .into_iter()
+            .map(|(name, props)| {
+                let props: Vec<serde_json::Value> = props
+                    .into_iter()
+                    .map(|(pname, default)| serde_json::json!({ "name": pname, "default": default }))
+                    .collect();
+                serde_json::json!({ "name": name, "props": props })
+            })
+            .collect();
+        serde_json::Value::Array(list)
     }
 
     /// Render the logical template `name` (e.g. `"blog/index"`) with `ctx`.
