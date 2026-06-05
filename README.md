@@ -2,11 +2,12 @@
 
 RWFW is being shaped as a Rust web framework distributed primarily through a CLI. Current target: `0.1.0-alpha.1`.
 
-The CLI generates a runnable starter application, while the framework crates provide the reusable runtime pieces: modules, routing, migrations, auth, Inertia, SSR, flash messages, and code generation conventions.
+The CLI generates a runnable starter application, while the framework crates provide the reusable runtime pieces: modules, routing, migrations, auth, server-side rendering with MiniJinja templates, Hotwire (Turbo + Stimulus), flash messages, and code generation conventions — with **zero npm/Node** in the frontend.
 
 ## Documentation
 
 - [Architecture](docs/ARCHITECTURE.md)
+- [Frontend guide (Hotwire + MiniJinja, zero npm)](docs/FRONTEND.md)
 - [CLI contract](docs/CLI_CONTRACT.md)
 - [SSO / OIDC](docs/SSO.md)
 - [Scaffold template contract](docs/TEMPLATE_CONTRACT.md)
@@ -23,10 +24,12 @@ The CLI generates a runnable starter application, while the framework crates pro
 
 ```bash
 cargo check --workspace
-npm install
-npm run build
-npm run build:ssr
 ```
+
+There is **no frontend build step**: the dogfood and generated apps render server-side (Hotwire + MiniJinja)
+with vendored Turbo/Stimulus, so `cargo` is the only toolchain you need. See the
+[Frontend guide](docs/FRONTEND.md). To run the integration tests, point `RWFW_TEST_DATABASE_URL` at a
+Postgres instance (e.g. `docker compose -f compose.dev.yaml up -d db`) and run `cargo test --workspace`.
 
 Generate a test application from this checkout:
 
@@ -78,26 +81,28 @@ The command updates app config and `.env.example`. Runtime secrets stay in env v
 
 ## Smoke Test
 
-The template smoke test generates a fresh app, checks scaffold output, builds assets, optionally starts Docker services, runs migrations and seeds, and optionally runs Playwright:
+The template smoke test generates a fresh app, checks scaffold output, `cargo check`s the app plus a
+generated module and a `Product` scaffold, and — when not skipped — starts Docker, runs migrations and the
+admin seed, and curls the **server-rendered** pages (`/blog/posts`, `/vendor/turbo.min.js`, `/assets/app.css`).
+There is no npm/Node step.
 
 ```bash
 scripts/smoke-template.sh
 ```
 
-This script is the release gate for generated app distribution. CI runs the same script with Docker disabled; local release validation should run the full script.
+This script is the release gate for generated app distribution. CI runs it with Docker disabled.
 
 Useful switches:
 
 ```bash
-RWFW_SMOKE_SKIP_NPM=1 scripts/smoke-template.sh
-RWFW_SMOKE_SKIP_DOCKER=1 scripts/smoke-template.sh
-RWFW_SMOKE_SKIP_PLAYWRIGHT=1 scripts/smoke-template.sh
-RWFW_SMOKE_KEEP_TMP=1 scripts/smoke-template.sh
+RWFW_SMOKE_SKIP_NPM=1 scripts/smoke-template.sh     # stop after the cargo checks (CI default)
+RWFW_SMOKE_SKIP_DOCKER=1 scripts/smoke-template.sh  # skip the Docker + runtime checks
+RWFW_SMOKE_KEEP_TMP=1 scripts/smoke-template.sh     # keep the generated app for inspection
 ```
 
 ## Production
 
-Generated apps include `Dockerfile.prod` and `compose.yaml`. The production image builds Vite client assets, the SSR bundle, and the Rust binary, then serves hashed assets from `dist/client` using the Vite manifest.
+Generated apps include `Dockerfile.prod` and `compose.yaml`. The production image is **Rust-only** (no Node stage): it builds the binary with `cargo build --release` and serves the Hotwire web assets — MiniJinja templates, vendored Turbo/Stimulus under `/vendor`, and the compiled `app.css` under `/assets` — from the app's `web/` directory.
 
 ```bash
 docker compose up --build

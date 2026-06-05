@@ -66,13 +66,11 @@ Before tagging:
 
 ```bash
 cargo check --workspace
-npm install
-npm run build
-npm run build:ssr
+cargo test --workspace
 scripts/smoke-template.sh
 ```
 
-The smoke script is the distribution gate because it validates what users actually receive: a fresh generated app, Docker files, scaffold templates, migrations, frontend build, and browser flow.
+The smoke script is the distribution gate because it validates what users actually receive: a fresh generated app, Docker files, scaffold templates, migrations, and — when not skipped — a running server whose pages are server-rendered HTML. There is no npm/Node build step.
 
 For Git distribution, also generate one app with Git dependencies and inspect the generated manifest:
 

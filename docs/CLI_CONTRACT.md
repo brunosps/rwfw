@@ -60,7 +60,7 @@ rwfw auth sso add keycloak \
 - Repository with `find_by_id`, searchable/paginated `find_all`, `create`, `update`, and `delete`.
 - Create/update/delete use-cases with validation and type parsing.
 - Protected Axum routes.
-- React/Inertia index, form, create, edit, and show pages.
+- MiniJinja `.html.j2` index, create, edit, and show templates plus a reusable form partial (server-rendered Hotwire, no npm).
 - Flash confirmations after create, update, and delete.
 
 ## Non-Goals For This Alpha
