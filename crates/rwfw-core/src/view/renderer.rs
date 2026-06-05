@@ -42,6 +42,9 @@ impl ViewRenderer {
     pub fn new(roots: Vec<TemplateRoot>) -> Self {
         let reloader = AutoReloader::new(move |notifier| {
             let mut env = Environment::new();
+            // Forgiving for HTML authors: `undefined.attr` yields undefined (and
+            // renders empty / works with the `default` filter) instead of erroring.
+            env.set_undefined_behavior(minijinja::UndefinedBehavior::Chainable);
             for root in &roots {
                 if root.dir.exists() {
                     notifier.watch_path(&root.dir, true);

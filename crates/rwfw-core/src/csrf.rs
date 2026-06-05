@@ -96,20 +96,23 @@ fn is_static(path: &str) -> bool {
         || path == "/favicon.ico"
 }
 
-/// Verification applies to form-encoded submissions only. JSON (Inertia/React),
-/// `/api/*`, and SSO callbacks are exempt.
+/// Verification applies to browser-driven mutations (HTML form posts and
+/// Turbo `data-turbo-method` PUT/PATCH/DELETE, which send `X-CSRF-Token`).
+/// Exempt: JSON bodies and `X-Inertia` requests (the legacy React/Inertia
+/// path), `/api/*`, and SSO callbacks.
 fn requires_csrf(path: &str, headers: &HeaderMap) -> bool {
     if path.starts_with("/api/") || path.contains("/sso/") {
         return false;
     }
-    headers
+    if headers.contains_key("x-inertia") {
+        return false;
+    }
+    let is_json = headers
         .get(CONTENT_TYPE)
         .and_then(|value| value.to_str().ok())
-        .map(|ct| {
-            ct.starts_with("application/x-www-form-urlencoded")
-                || ct.starts_with("multipart/form-data")
-        })
-        .unwrap_or(false)
+        .map(|ct| ct.starts_with("application/json"))
+        .unwrap_or(false);
+    !is_json
 }
 
 fn cookie_value<'a>(headers: &'a HeaderMap, name: &str) -> Option<&'a str> {
