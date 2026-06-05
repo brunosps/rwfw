@@ -53,6 +53,12 @@ enum NewCommands {
         /// Example application to generate
         #[arg(long, value_enum, default_value = "blog")]
         example: commands::new_app::ExampleKind,
+        /// Database backend for the generated app
+        #[arg(long, value_enum, default_value = "postgres")]
+        database: commands::new_app::DatabaseKind,
+        /// Generate a Tauri desktop shell (src-tauri/) around the app
+        #[arg(long)]
+        tauri: bool,
         /// Use local RWFW framework crates from this repository path
         #[arg(long)]
         rwfw_path: Option<PathBuf>,
@@ -72,6 +78,12 @@ enum NewCommands {
         /// Example application to generate
         #[arg(long, value_enum, default_value = "blog")]
         example: commands::new_app::ExampleKind,
+        /// Database backend for the generated app
+        #[arg(long, value_enum, default_value = "postgres")]
+        database: commands::new_app::DatabaseKind,
+        /// Generate a Tauri desktop shell (src-tauri/) around the app
+        #[arg(long)]
+        tauri: bool,
         /// Use local RWFW framework crates from this repository path
         #[arg(long)]
         rwfw_path: Option<PathBuf>,
@@ -213,6 +225,8 @@ async fn main() -> anyhow::Result<()> {
             NewCommands::App {
                 name,
                 example,
+                database,
+                tauri,
                 rwfw_path,
                 rwfw_version,
                 rwfw_git,
@@ -220,6 +234,8 @@ async fn main() -> anyhow::Result<()> {
             } => commands::new_app::run(
                 &name,
                 example,
+                database,
+                tauri,
                 rwfw_path.as_deref(),
                 rwfw_version.as_deref(),
                 rwfw_git.as_deref(),
@@ -228,6 +244,8 @@ async fn main() -> anyhow::Result<()> {
             NewCommands::Example {
                 name,
                 example,
+                database,
+                tauri,
                 rwfw_path,
                 rwfw_version,
                 rwfw_git,
@@ -235,6 +253,8 @@ async fn main() -> anyhow::Result<()> {
             } => commands::new_app::run(
                 &name,
                 example,
+                database,
+                tauri,
                 rwfw_path.as_deref(),
                 rwfw_version.as_deref(),
                 rwfw_git.as_deref(),

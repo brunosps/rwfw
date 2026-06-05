@@ -1,6 +1,6 @@
-CREATE TABLE IF NOT EXISTS auth.oauth_identities (
+CREATE TABLE IF NOT EXISTS auth_oauth_identities (
                 id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+                user_id UUID NOT NULL REFERENCES auth_users(id) ON DELETE CASCADE,
                 provider VARCHAR(64) NOT NULL,
                 issuer TEXT NOT NULL,
                 subject TEXT NOT NULL,

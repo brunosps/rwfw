@@ -1,23 +1,59 @@
 use crate::module::Module;
-use sea_orm::{ConnectionTrait, DatabaseConnection, Statement};
+use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
-pub const MIGRATION_LEDGER_SCHEMA: &str = "rwfw";
-pub const MIGRATION_LEDGER_TABLE: &str = "migrations";
+/// Migration ledger table. Table names are uniform across backends (no schemas)
+/// so the same name works on Postgres and SQLite.
+pub const MIGRATION_LEDGER_TABLE: &str = "rwfw_migrations";
 
 #[derive(Debug, Clone)]
 pub struct Migration {
     pub version: &'static str,
     pub name: &'static str,
+    /// Postgres (and default) SQL body.
     pub sql: &'static str,
+    /// Optional SQLite-specific SQL body; falls back to `sql` when `None`.
+    pub sqlite_sql: Option<&'static str>,
 }
 
 impl Migration {
+    /// A migration whose single SQL body runs on every backend. Generated
+    /// scaffolds still call this 3-arg form; it stays source-compatible.
     pub const fn new(version: &'static str, name: &'static str, sql: &'static str) -> Self {
-        Self { version, name, sql }
+        Self {
+            version,
+            name,
+            sql,
+            sqlite_sql: None,
+        }
     }
 
+    /// A migration carrying both a Postgres body and a SQLite body.
+    pub const fn with_sqlite(
+        version: &'static str,
+        name: &'static str,
+        sql: &'static str,
+        sqlite_sql: &'static str,
+    ) -> Self {
+        Self {
+            version,
+            name,
+            sql,
+            sqlite_sql: Some(sqlite_sql),
+        }
+    }
+
+    /// The SQL body to apply on the active backend.
+    pub fn body(&self, backend: DatabaseBackend) -> &'static str {
+        match backend {
+            DatabaseBackend::Sqlite => self.sqlite_sql.unwrap_or(self.sql),
+            _ => self.sql,
+        }
+    }
+
+    /// Backend-independent checksum (hashes the Postgres body) so a ledger row
+    /// stays stable regardless of which backend applied it.
     pub fn checksum(&self) -> String {
         let mut hasher = DefaultHasher::new();
         self.sql.trim_end().hash(&mut hasher);
@@ -82,6 +118,7 @@ pub async fn run_module_migrations(
     migrations: Vec<Migration>,
 ) -> anyhow::Result<MigrationReport> {
     ensure_ledger(db).await?;
+    let backend = db.get_database_backend();
     let mut report = MigrationReport::default();
 
     for migration in migrations {
@@ -112,7 +149,7 @@ pub async fn run_module_migrations(
             "Applying migration"
         );
 
-        db.execute_unprepared(migration.sql).await?;
+        db.execute_unprepared(migration.body(backend)).await?;
         record_applied(db, module, &migration, &checksum).await?;
 
         report.applied.push(MigrationRecord {
@@ -126,17 +163,16 @@ pub async fn run_module_migrations(
 }
 
 async fn ensure_ledger(db: &DatabaseConnection) -> anyhow::Result<()> {
+    // Uniform, portable DDL: no schema, `applied_at` is TEXT filled from Rust at
+    // insert time (see `record_applied`), so the same statement runs on both
+    // Postgres and SQLite.
     db.execute_unprepared(&format!(
-        "CREATE SCHEMA IF NOT EXISTS {MIGRATION_LEDGER_SCHEMA}"
-    ))
-    .await?;
-    db.execute_unprepared(&format!(
-        "CREATE TABLE IF NOT EXISTS {MIGRATION_LEDGER_SCHEMA}.{MIGRATION_LEDGER_TABLE} (
+        "CREATE TABLE IF NOT EXISTS {MIGRATION_LEDGER_TABLE} (
             module_name TEXT NOT NULL,
             version TEXT NOT NULL,
             name TEXT NOT NULL,
             checksum TEXT NOT NULL,
-            applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            applied_at TEXT NOT NULL,
             PRIMARY KEY (module_name, version)
         )"
     ))
@@ -150,7 +186,7 @@ async fn applied_checksum(
     version: &str,
 ) -> anyhow::Result<Option<String>> {
     let sql = format!(
-        "SELECT checksum FROM {MIGRATION_LEDGER_SCHEMA}.{MIGRATION_LEDGER_TABLE} WHERE module_name = '{}' AND version = '{}'",
+        "SELECT checksum FROM {MIGRATION_LEDGER_TABLE} WHERE module_name = '{}' AND version = '{}'",
         escape_sql(module),
         escape_sql(version)
     );
@@ -168,12 +204,13 @@ async fn record_applied(
     checksum: &str,
 ) -> anyhow::Result<()> {
     let sql = format!(
-        "INSERT INTO {MIGRATION_LEDGER_SCHEMA}.{MIGRATION_LEDGER_TABLE} (module_name, version, name, checksum) \
-         VALUES ('{}', '{}', '{}', '{}')",
+        "INSERT INTO {MIGRATION_LEDGER_TABLE} (module_name, version, name, checksum, applied_at) \
+         VALUES ('{}', '{}', '{}', '{}', '{}')",
         escape_sql(module),
         escape_sql(migration.version),
         escape_sql(migration.name),
-        escape_sql(checksum)
+        escape_sql(checksum),
+        escape_sql(&crate::sql::now_iso()),
     );
     db.execute_unprepared(&sql).await?;
     Ok(())

@@ -70,4 +70,16 @@ impl AppConfig {
             .build()?;
         Ok(Self { inner: config })
     }
+
+    /// Build a test config backed by a SQLite file (or `:memory:`). Used by the
+    /// SQLite test harness so the suite runs with no external Postgres.
+    #[doc(hidden)]
+    pub fn for_test_sqlite(path: &str) -> anyhow::Result<Self> {
+        let url = if path == ":memory:" {
+            "sqlite::memory:".to_string()
+        } else {
+            crate::db::sqlite_url_from_path(path)
+        };
+        Self::for_test(&url)
+    }
 }

@@ -7,7 +7,7 @@ pub struct GetUserQuery {
 
 impl SqlQuery for GetUserQuery {
     fn raw_sql(&self) -> &str {
-        "SELECT id, name, email, created_at, updated_at FROM auth.users WHERE id = {{user_id}}"
+        "SELECT id, name, email, created_at, updated_at FROM auth_users WHERE id = {{user_id}}"
     }
 
     fn search_columns(&self) -> Vec<SearchColumn> {

@@ -52,9 +52,17 @@ impl ExampleKind {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+pub enum DatabaseKind {
+    Postgres,
+    Sqlite,
+}
+
 pub fn run(
     name: &str,
     example: ExampleKind,
+    database: DatabaseKind,
+    tauri: bool,
     rwfw_path: Option<&Path>,
     rwfw_version: Option<&str>,
     rwfw_git: Option<&str>,
@@ -81,7 +89,10 @@ pub fn run(
         rwfw_shared_dep: dependency_source.dependency("rwfw-shared"),
         rwfw_macros_dep: dependency_source.dependency("rwfw-macros"),
         mod_auth_dep: dependency_source.module_dependency("auth"),
+        rwfw_tauri_dep: dependency_source.dependency_with_features("rwfw-tauri", &["desktop"]),
         example,
+        database,
+        tauri,
         dependency_source,
     };
 
@@ -92,11 +103,10 @@ pub fn run(
     write_file(&app_dir.join(".env.example"), env_example())?;
     write_file(&app_dir.join("Dockerfile"), dockerfile(&context))?;
     write_file(&app_dir.join("Dockerfile.prod"), dockerfile(&context))?;
-    write_file(&app_dir.join("compose.yaml"), compose_yaml(&context))?;
-    write_file(
-        &app_dir.join("compose.dev.yaml"),
-        compose_dev_yaml(&context),
-    )?;
+    if matches!(context.database, DatabaseKind::Postgres) {
+        write_file(&app_dir.join("compose.yaml"), compose_yaml(&context))?;
+        write_file(&app_dir.join("compose.dev.yaml"), compose_dev_yaml(&context))?;
+    }
     write_file(
         &app_dir.join(".rwfw/templates/model.rs.tera"),
         scaffold_model_template(),
@@ -249,6 +259,10 @@ pub fn run(
         ExampleKind::Ecommerce => write_ecommerce_example(app_dir, &context)?,
     }
 
+    if context.tauri {
+        write_tauri_shell(app_dir, &context)?;
+    }
+
     println!(
         "Created RWFW {example} app `{app_name}` at {}",
         app_dir.display(),
@@ -283,7 +297,10 @@ struct AppTemplateContext {
     rwfw_shared_dep: String,
     rwfw_macros_dep: String,
     mod_auth_dep: String,
+    rwfw_tauri_dep: String,
     example: ExampleKind,
+    database: DatabaseKind,
+    tauri: bool,
     dependency_source: DependencySource,
 }
 
@@ -386,6 +403,31 @@ impl DependencySource {
             Self::Git { repository, tag } => git_dependency(repository, tag),
         }
     }
+
+    /// Like [`dependency`] but with explicit cargo features (e.g. `desktop` for
+    /// `rwfw-tauri`). Always emits an inline-table form.
+    fn dependency_with_features(&self, crate_name: &str, features: &[&str]) -> String {
+        let feats = features
+            .iter()
+            .map(|f| format!("\"{f}\""))
+            .collect::<Vec<_>>()
+            .join(", ");
+        match self {
+            Self::Path(root) => {
+                let path = root.join("crates").join(crate_name);
+                format!(
+                    "{{ path = \"{}\", features = [{feats}] }}",
+                    path_for_toml(&path)
+                )
+            }
+            Self::Version(version) => {
+                format!("{{ version = \"{version}\", features = [{feats}] }}")
+            }
+            Self::Git { repository, tag } => {
+                format!("{{ git = \"{repository}\", tag = \"{tag}\", features = [{feats}] }}")
+            }
+        }
+    }
 }
 
 fn validate_framework_path(path: &Path) -> anyhow::Result<PathBuf> {
@@ -434,6 +476,7 @@ fn create_dirs(app_dir: &Path) -> anyhow::Result<()> {
         "crates/modules/home/src/routes",
         "crates/modules/home/web/templates",
         "crates/modules/auth/web/templates",
+        "data",
     ] {
         fs::create_dir_all(app_dir.join(dir))?;
     }
@@ -549,6 +592,9 @@ fn gitignore() -> String {
     r#"/target
 .env
 .DS_Store
+/data/*.db
+/data/*.db-wal
+/data/*.db-shm
 "#
     .to_string()
 }
@@ -942,12 +988,17 @@ modules_dir = "crates/modules"
 }
 
 fn workspace_cargo_toml(context: &AppTemplateContext) -> String {
+    let tauri_member = if context.tauri {
+        "\n    \"src-tauri\","
+    } else {
+        ""
+    };
     r#"[workspace]
 resolver = "2"
 members = [
     "crates/app",
     "crates/modules/home",
-    "crates/modules/__EXAMPLE_MODULE__",
+    "crates/modules/__EXAMPLE_MODULE__",__TAURI_MEMBER__
 ]
 
 [workspace.package]
@@ -964,7 +1015,7 @@ tower-http = { version = "0.6", features = ["fs", "trace", "cors"] }
 tower-sessions = "0.14"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-sea-orm = { version = "1", features = ["sqlx-postgres", "runtime-tokio-rustls", "macros"] }
+sea-orm = { version = "1", features = ["sqlx-postgres", "sqlx-sqlite", "runtime-tokio-rustls", "macros"] }
 async-trait = "0.1"
 inventory = "0.3"
 tracing = "0.1"
@@ -977,12 +1028,23 @@ chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1", features = ["v4", "serde"] }
 "#
     .replace("__EXAMPLE_MODULE__", context.example.module_name())
+    .replace("__TAURI_MEMBER__", tauri_member)
+}
+
+fn dev_database_url(context: &AppTemplateContext) -> String {
+    match context.database {
+        DatabaseKind::Postgres => format!(
+            "postgres://rwfw:rwfw@localhost:54329/{}",
+            context.database_name
+        ),
+        DatabaseKind::Sqlite => format!("sqlite://data/{}.db?mode=rwc", context.database_name),
+    }
 }
 
 fn development_yaml(context: &AppTemplateContext) -> String {
     format!(
         r#"database:
-  url: "postgres://rwfw:rwfw@localhost:54329/{}"
+  url: "{db_url}"
 
 server:
   host: "0.0.0.0"
@@ -998,7 +1060,128 @@ auth:
     redirect_base_url: "http://localhost:3000"
     providers: {{}}
 "#,
-        context.database_name
+        db_url = dev_database_url(context)
+    )
+}
+
+fn create_tauri_dirs(app_dir: &Path) -> anyhow::Result<()> {
+    fs::create_dir_all(app_dir.join("src-tauri/src"))?;
+    Ok(())
+}
+
+/// Emit a `src-tauri/` desktop shell: a `<app>-desktop` crate that boots the
+/// app's `build_router` in-process (via `rwfw-tauri`) and opens a Tauri window.
+fn write_tauri_shell(app_dir: &Path, context: &AppTemplateContext) -> anyhow::Result<()> {
+    create_tauri_dirs(app_dir)?;
+    write_file(
+        &app_dir.join("src-tauri/Cargo.toml"),
+        tauri_cargo_toml(context),
+    )?;
+    write_file(&app_dir.join("src-tauri/build.rs"), tauri_build_rs())?;
+    write_file(&app_dir.join("src-tauri/src/main.rs"), tauri_main_rs(context))?;
+    write_file(
+        &app_dir.join("src-tauri/tauri.conf.json"),
+        tauri_conf_json(context),
+    )?;
+    Ok(())
+}
+
+fn tauri_cargo_toml(context: &AppTemplateContext) -> String {
+    format!(
+        r#"[package]
+name = "{app_name}-desktop"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "{app_name}-desktop"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = {{ version = "2", features = [] }}
+
+[dependencies]
+{app_name} = {{ path = "../crates/app" }}
+rwfw-core = {core}
+rwfw-tauri = {tauri}
+tauri = {{ version = "2", features = [] }}
+tokio = {{ workspace = true }}
+anyhow = {{ workspace = true }}
+"#,
+        app_name = context.app_name,
+        core = context.rwfw_core_dep,
+        tauri = context.rwfw_tauri_dep,
+    )
+}
+
+fn tauri_build_rs() -> String {
+    "fn main() {\n    tauri_build::build();\n}\n".to_string()
+}
+
+fn tauri_main_rs(context: &AppTemplateContext) -> String {
+    r#"// Desktop shell for the RWFW app. Boots `build_router` in-process on
+// 127.0.0.1:0 with graceful shutdown (owned by rwfw-tauri) and opens a native
+// window pointed at the ephemeral local address.
+#![cfg_attr(
+    all(not(debug_assertions), target_os = "windows"),
+    windows_subsystem = "windows"
+)]
+
+use rwfw_core::config::AppConfig;
+
+fn main() -> anyhow::Result<()> {
+    let config = AppConfig::load()?;
+    rwfw_core::logging::init_default();
+
+    // Apply migrations (creates the SQLite file on first run) before the window.
+    tauri::async_runtime::block_on(__APP_CRATE_IDENT__::run_migrations(&config))?;
+
+    tauri::Builder::default()
+        .setup(move |app| {
+            rwfw_tauri::desktop::attach(app, config, __APP_CRATE_IDENT__::build_router)
+                .map_err(|e| e.to_string())?;
+            Ok(())
+        })
+        .run(tauri::generate_context!())
+        .map_err(|e| anyhow::anyhow!("tauri error: {e}"))?;
+    Ok(())
+}
+"#
+    .replace("__APP_CRATE_IDENT__", &context.app_crate_ident)
+}
+
+fn tauri_conf_json(context: &AppTemplateContext) -> String {
+    format!(
+        r#"{{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "{title}",
+  "version": "0.1.0",
+  "identifier": "com.rwfw.{ident}",
+  "build": {{
+    "beforeDevCommand": "",
+    "beforeBuildCommand": ""
+  }},
+  "app": {{
+    "windows": [
+      {{
+        "title": "{title}",
+        "width": 1200,
+        "height": 800,
+        "resizable": true,
+        "fullscreen": false
+      }}
+    ],
+    "security": {{
+      "csp": null
+    }}
+  }},
+  "bundle": {{
+    "active": false
+  }}
+}}
+"#,
+        title = context.app_title,
+        ident = context.app_crate_ident,
     )
 }
 

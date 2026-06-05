@@ -114,12 +114,13 @@ pub async fn create_session(
 ) -> anyhow::Result<String> {
     let token = generate_session_token();
     let ttl_seconds = ttl_seconds.max(60);
+    let expires_at = crate::sql::now_plus_seconds_iso(ttl_seconds);
+    let uid = crate::sql::uuid_literal(db.get_database_backend(), user_id);
     let sql = format!(
-        "INSERT INTO auth.sessions (user_id, token, expires_at) \
-         VALUES ('{}', '{}', NOW() + INTERVAL '{} seconds')",
-        user_id,
+        "INSERT INTO auth_sessions (user_id, token, expires_at) \
+         VALUES ({uid}, '{}', '{}')",
         escape_sql(&token),
-        ttl_seconds
+        escape_sql(&expires_at)
     );
 
     db.execute_unprepared(&sql).await?;
@@ -128,7 +129,7 @@ pub async fn create_session(
 
 pub async fn delete_session(db: &DatabaseConnection, token: &str) -> anyhow::Result<()> {
     let sql = format!(
-        "DELETE FROM auth.sessions WHERE token = '{}'",
+        "DELETE FROM auth_sessions WHERE token = '{}'",
         escape_sql(token)
     );
     db.execute_unprepared(&sql).await?;
@@ -139,13 +140,15 @@ pub async fn find_current_user(
     db: &DatabaseConnection,
     token: &str,
 ) -> anyhow::Result<Option<CurrentUser>> {
+    let now = crate::sql::now_iso();
     let sql = format!(
         "SELECT u.id, u.name, u.email \
-         FROM auth.sessions s \
-         JOIN auth.users u ON u.id = s.user_id \
-         WHERE s.token = '{}' AND s.expires_at > NOW() \
+         FROM auth_sessions s \
+         JOIN auth_users u ON u.id = s.user_id \
+         WHERE s.token = '{}' AND s.expires_at > '{}' \
          LIMIT 1",
-        escape_sql(token)
+        escape_sql(token),
+        escape_sql(&now)
     );
 
     let Some(row) = db
@@ -173,14 +176,14 @@ pub async fn user_has_permission(
     user_id: uuid::Uuid,
     permission: &str,
 ) -> anyhow::Result<bool> {
+    let uid = crate::sql::uuid_literal(db.get_database_backend(), user_id);
     let sql = format!(
         "SELECT 1 \
-         FROM auth.user_roles ur \
-         JOIN auth.role_permissions rp ON rp.role_id = ur.role_id \
-         JOIN auth.permissions p ON p.id = rp.permission_id \
-         WHERE ur.user_id = '{}' AND p.name = '{}' \
+         FROM auth_user_roles ur \
+         JOIN auth_role_permissions rp ON rp.role_id = ur.role_id \
+         JOIN auth_permissions p ON p.id = rp.permission_id \
+         WHERE ur.user_id = {uid} AND p.name = '{}' \
          LIMIT 1",
-        user_id,
         escape_sql(permission)
     );
 
@@ -201,14 +204,16 @@ pub async fn ensure_permissions(
         } else {
             permission.description.to_string()
         };
+        let now = crate::sql::now_iso();
         let sql = format!(
-            "INSERT INTO auth.permissions (name, description) \
+            "INSERT INTO auth_permissions (name, description) \
              VALUES ('{}', '{}') \
              ON CONFLICT (name) DO UPDATE SET \
                  description = EXCLUDED.description, \
-                 updated_at = NOW()",
+                 updated_at = '{}'",
             escape_sql(permission.name),
-            escape_sql(&description)
+            escape_sql(&description),
+            escape_sql(&now)
         );
         db.execute_unprepared(&sql).await?;
     }
@@ -221,14 +226,16 @@ pub async fn ensure_role(
     role: &str,
     description: &str,
 ) -> anyhow::Result<()> {
+    let now = crate::sql::now_iso();
     let sql = format!(
-        "INSERT INTO auth.roles (name, description) \
+        "INSERT INTO auth_roles (name, description) \
          VALUES ('{}', '{}') \
          ON CONFLICT (name) DO UPDATE SET \
              description = EXCLUDED.description, \
-             updated_at = NOW()",
+             updated_at = '{}'",
         escape_sql(role),
-        escape_sql(description)
+        escape_sql(description),
+        escape_sql(&now)
     );
     db.execute_unprepared(&sql).await?;
     Ok(())
@@ -263,34 +270,39 @@ pub async fn ensure_admin_user(
     let password_hash = hash_password(input.password)?;
     let existing = find_user_id_by_email(db, email).await?;
 
+    let now = crate::sql::now_iso();
+    let backend = db.get_database_backend();
     let (user_id, created, password_updated) = if let Some(user_id) = existing {
+        let uid = crate::sql::uuid_literal(backend, user_id);
         let sql = if input.update_password {
             format!(
-                "UPDATE auth.users \
-                 SET name = '{}', password_hash = '{}', updated_at = NOW() \
-                 WHERE id = '{}'",
+                "UPDATE auth_users \
+                 SET name = '{}', password_hash = '{}', updated_at = '{}' \
+                 WHERE id = {uid}",
                 escape_sql(name),
                 escape_sql(&password_hash),
-                user_id
+                escape_sql(&now)
             )
         } else {
             format!(
-                "UPDATE auth.users SET name = '{}', updated_at = NOW() WHERE id = '{}'",
+                "UPDATE auth_users SET name = '{}', updated_at = '{}' WHERE id = {uid}",
                 escape_sql(name),
-                user_id
+                escape_sql(&now)
             )
         };
         db.execute_unprepared(&sql).await?;
         (user_id, false, input.update_password)
     } else {
         let user_id = uuid::Uuid::new_v4();
+        let uid = crate::sql::uuid_literal(backend, user_id);
         let sql = format!(
-            "INSERT INTO auth.users (id, name, email, password_hash, created_at, updated_at) \
-             VALUES ('{}', '{}', '{}', '{}', NOW(), NOW())",
-            user_id,
+            "INSERT INTO auth_users (id, name, email, password_hash, created_at, updated_at) \
+             VALUES ({uid}, '{}', '{}', '{}', '{}', '{}')",
             escape_sql(name),
             escape_sql(email),
-            escape_sql(&password_hash)
+            escape_sql(&password_hash),
+            escape_sql(&now),
+            escape_sql(&now)
         );
         db.execute_unprepared(&sql).await?;
         (user_id, true, true)
@@ -312,7 +324,7 @@ pub async fn list_permissions(db: &DatabaseConnection) -> anyhow::Result<Vec<Sto
     let rows = db
         .query_all(Statement::from_string(
             db.get_database_backend(),
-            "SELECT name, description FROM auth.permissions ORDER BY name".to_string(),
+            "SELECT name, description FROM auth_permissions ORDER BY name".to_string(),
         ))
         .await?;
 
@@ -330,7 +342,7 @@ pub async fn list_roles(db: &DatabaseConnection) -> anyhow::Result<Vec<StoredRol
     let rows = db
         .query_all(Statement::from_string(
             db.get_database_backend(),
-            "SELECT name, description FROM auth.roles ORDER BY name".to_string(),
+            "SELECT name, description FROM auth_roles ORDER BY name".to_string(),
         ))
         .await?;
 
@@ -357,10 +369,10 @@ pub async fn grant_permission_to_role(
     }
 
     let sql = format!(
-        "INSERT INTO auth.role_permissions (role_id, permission_id) \
+        "INSERT INTO auth_role_permissions (role_id, permission_id) \
          SELECT r.id, p.id \
-         FROM auth.roles r \
-         JOIN auth.permissions p ON p.name = '{}' \
+         FROM auth_roles r \
+         JOIN auth_permissions p ON p.name = '{}' \
          WHERE r.name = '{}' \
          ON CONFLICT DO NOTHING",
         escape_sql(permission),
@@ -375,11 +387,11 @@ pub async fn assign_role(
     user_id: uuid::Uuid,
     role: &str,
 ) -> anyhow::Result<()> {
+    let uid = crate::sql::uuid_literal(db.get_database_backend(), user_id);
     let sql = format!(
-        "INSERT INTO auth.user_roles (user_id, role_id) \
-         SELECT '{}', id FROM auth.roles WHERE name = '{}' \
+        "INSERT INTO auth_user_roles (user_id, role_id) \
+         SELECT {uid}, id FROM auth_roles WHERE name = '{}' \
          ON CONFLICT DO NOTHING",
-        user_id,
         escape_sql(role)
     );
     db.execute_unprepared(&sql).await?;
@@ -399,10 +411,10 @@ pub async fn assign_role_by_email(
     }
 
     let sql = format!(
-        "INSERT INTO auth.user_roles (user_id, role_id) \
+        "INSERT INTO auth_user_roles (user_id, role_id) \
          SELECT u.id, r.id \
-         FROM auth.users u \
-         JOIN auth.roles r ON r.name = '{}' \
+         FROM auth_users u \
+         JOIN auth_roles r ON r.name = '{}' \
          WHERE u.email = '{}' \
          ON CONFLICT DO NOTHING",
         escape_sql(role),
@@ -416,7 +428,7 @@ pub async fn user_count(db: &DatabaseConnection) -> anyhow::Result<u64> {
     let row = db
         .query_one(Statement::from_string(
             db.get_database_backend(),
-            "SELECT COUNT(*)::BIGINT AS count FROM auth.users".to_string(),
+            "SELECT CAST(COUNT(*) AS BIGINT) AS count FROM auth_users".to_string(),
         ))
         .await?;
 
@@ -503,13 +515,13 @@ pub fn append_set_cookie(response: &mut axum::response::Response, cookie: String
 }
 
 async fn load_roles(db: &DatabaseConnection, user_id: uuid::Uuid) -> anyhow::Result<Vec<String>> {
+    let uid = crate::sql::uuid_literal(db.get_database_backend(), user_id);
     let sql = format!(
         "SELECT r.name \
-         FROM auth.roles r \
-         JOIN auth.user_roles ur ON ur.role_id = r.id \
-         WHERE ur.user_id = '{}' \
-         ORDER BY r.name",
-        user_id
+         FROM auth_roles r \
+         JOIN auth_user_roles ur ON ur.role_id = r.id \
+         WHERE ur.user_id = {uid} \
+         ORDER BY r.name"
     );
 
     let rows = db
@@ -525,7 +537,7 @@ async fn role_exists(db: &DatabaseConnection, role: &str) -> anyhow::Result<bool
     exists(
         db,
         &format!(
-            "SELECT 1 FROM auth.roles WHERE name = '{}' LIMIT 1",
+            "SELECT 1 FROM auth_roles WHERE name = '{}' LIMIT 1",
             escape_sql(role)
         ),
     )
@@ -537,15 +549,15 @@ async fn user_has_role(
     user_id: uuid::Uuid,
     role: &str,
 ) -> anyhow::Result<bool> {
+    let uid = crate::sql::uuid_literal(db.get_database_backend(), user_id);
     exists(
         db,
         &format!(
             "SELECT 1 \
-             FROM auth.user_roles ur \
-             JOIN auth.roles r ON r.id = ur.role_id \
-             WHERE ur.user_id = '{}' AND r.name = '{}' \
+             FROM auth_user_roles ur \
+             JOIN auth_roles r ON r.id = ur.role_id \
+             WHERE ur.user_id = {uid} AND r.name = '{}' \
              LIMIT 1",
-            user_id,
             escape_sql(role)
         ),
     )
@@ -553,25 +565,30 @@ async fn user_has_role(
 }
 
 async fn table_exists(db: &DatabaseConnection, schema: &str, table: &str) -> anyhow::Result<bool> {
-    exists(
-        db,
-        &format!(
-            "SELECT 1 \
-             FROM information_schema.tables \
-             WHERE table_schema = '{}' AND table_name = '{}' \
+    // Tables are uniformly named `<schema>_<table>` on both backends.
+    let physical = format!("{schema}_{table}");
+    let sql = match db.get_database_backend() {
+        sea_orm::DatabaseBackend::Sqlite => format!(
+            "SELECT 1 FROM sqlite_master \
+             WHERE type = 'table' AND name = '{}' \
              LIMIT 1",
-            escape_sql(schema),
-            escape_sql(table)
+            escape_sql(&physical)
         ),
-    )
-    .await
+        _ => format!(
+            "SELECT 1 FROM information_schema.tables \
+             WHERE table_name = '{}' \
+             LIMIT 1",
+            escape_sql(&physical)
+        ),
+    };
+    exists(db, &sql).await
 }
 
 async fn permission_exists(db: &DatabaseConnection, permission: &str) -> anyhow::Result<bool> {
     exists(
         db,
         &format!(
-            "SELECT 1 FROM auth.permissions WHERE name = '{}' LIMIT 1",
+            "SELECT 1 FROM auth_permissions WHERE name = '{}' LIMIT 1",
             escape_sql(permission)
         ),
     )
@@ -583,7 +600,7 @@ async fn find_user_id_by_email(
     email: &str,
 ) -> anyhow::Result<Option<uuid::Uuid>> {
     let sql = format!(
-        "SELECT id FROM auth.users WHERE email = '{}' LIMIT 1",
+        "SELECT id FROM auth_users WHERE email = '{}' LIMIT 1",
         escape_sql(email)
     );
     let row = db
@@ -597,7 +614,7 @@ async fn user_email_exists(db: &DatabaseConnection, email: &str) -> anyhow::Resu
     exists(
         db,
         &format!(
-            "SELECT 1 FROM auth.users WHERE email = '{}' LIMIT 1",
+            "SELECT 1 FROM auth_users WHERE email = '{}' LIMIT 1",
             escape_sql(email)
         ),
     )
@@ -639,14 +656,14 @@ async fn load_permissions(
     db: &DatabaseConnection,
     user_id: uuid::Uuid,
 ) -> anyhow::Result<Vec<String>> {
+    let uid = crate::sql::uuid_literal(db.get_database_backend(), user_id);
     let sql = format!(
         "SELECT DISTINCT p.name \
-         FROM auth.permissions p \
-         JOIN auth.role_permissions rp ON rp.permission_id = p.id \
-         JOIN auth.user_roles ur ON ur.role_id = rp.role_id \
-         WHERE ur.user_id = '{}' \
-         ORDER BY p.name",
-        user_id
+         FROM auth_permissions p \
+         JOIN auth_role_permissions rp ON rp.permission_id = p.id \
+         JOIN auth_user_roles ur ON ur.role_id = rp.role_id \
+         WHERE ur.user_id = {uid} \
+         ORDER BY p.name"
     );
 
     let rows = db

@@ -10,7 +10,7 @@ impl SqlQuery for GetPostQuery {
         r#"
         SELECT p.id, p.title, p.body, p.published, p.created_at, p.updated_at,
                p.author_id
-        FROM blog.posts p
+        FROM blog_posts p
         WHERE p.id = {{post_id}}
         "#
     }

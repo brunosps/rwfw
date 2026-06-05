@@ -15,6 +15,7 @@ pub mod pagination;
 pub mod query;
 pub mod rate_limit;
 pub mod repository;
+pub mod sql;
 pub mod use_case;
 pub mod validation;
 pub mod view;
