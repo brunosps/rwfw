@@ -1,0 +1,14 @@
+{#def name, label, type="text", value="", required=true #}
+<div>
+  <label for="{{ name }}" class="block text-sm font-medium text-gray-700">{{ label }}</label>
+  {% if type == "textarea" %}
+  <textarea id="{{ name }}" name="{{ name }}" rows="10"
+            class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            {% if required %}required{% endif %}>{{ value }}</textarea>
+  {% else %}
+  <input id="{{ name }}" name="{{ name }}" type="{{ type }}" value="{{ value }}"
+         class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+         {% if required %}required{% endif %}>
+  {% endif %}
+  {% if errors[name] %}<p class="mt-1 text-sm text-red-600">{{ errors[name] }}</p>{% endif %}
+</div>

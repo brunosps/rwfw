@@ -49,7 +49,23 @@ async fn post(
     let body = input.body.clone();
 
     match use_case.execute(&repo, user.id, input).await {
-        Ok(output) => Redirect::to(&format!("/blog/posts/{}", output.post.id)).into_response(),
+        Ok(output) => {
+            // Broadcast the new post to anyone watching the list (Turbo Stream / SSE).
+            let post_id = output.post.id;
+            let card = v.render_fragment(
+                "blog/posts/_card",
+                serde_json::json!({ "post": output.post }),
+            );
+            let stream = rwfw_core::view::turbo::TurboStream::new(
+                rwfw_core::view::turbo::TurboAction::Prepend,
+                "posts",
+                card,
+            )
+            .render();
+            let _ = state.broadcaster.send(stream);
+
+            Redirect::to(&format!("/blog/posts/{post_id}")).into_response()
+        }
         Err(AppError::Validation(errors)) => v.render_status(
             StatusCode::UNPROCESSABLE_ENTITY,
             "blog/create",

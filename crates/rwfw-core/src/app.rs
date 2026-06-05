@@ -17,6 +17,8 @@ pub struct AppState {
     pub events: Arc<EventBus>,
     pub shared_data: Arc<SharedData>,
     pub view: ViewRenderer,
+    /// Broadcast channel for Turbo Stream fragments delivered over SSE.
+    pub broadcaster: tokio::sync::broadcast::Sender<String>,
     modules_nav: Arc<Vec<ModuleNav>>,
 }
 
@@ -116,6 +118,7 @@ impl RwfwApp {
         let view = ViewRenderer::new(template_roots);
 
         let shared_data = Arc::new(SharedData::default());
+        let (broadcaster, _rx) = tokio::sync::broadcast::channel::<String>(256);
 
         let state = AppState {
             config: Arc::new(self.config),
@@ -123,6 +126,7 @@ impl RwfwApp {
             events,
             shared_data,
             view,
+            broadcaster,
             modules_nav: Arc::new(modules_nav),
         };
 

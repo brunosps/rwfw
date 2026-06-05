@@ -97,6 +97,55 @@ async fn create_post_validation_re_renders_422() {
 }
 
 #[tokio::test]
+async fn sse_stream_broadcasts_new_post() {
+    let app = app_or_skip!("sse_stream_broadcasts_new_post");
+    app.login_admin().await;
+
+    // Open the SSE stream (subscribes to the broadcaster).
+    let stream_res = app
+        .get("/blog/posts/stream")
+        .send()
+        .await
+        .expect("GET /blog/posts/stream");
+    assert_eq!(stream_res.status().as_u16(), 200);
+    let content_type = stream_res
+        .headers()
+        .get("content-type")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("")
+        .to_string();
+    assert!(content_type.contains("text/event-stream"), "ct: {content_type}");
+
+    // Create a post; it should be broadcast to the open stream.
+    let token = app.csrf_token("/blog/posts/create").await;
+    let created = app
+        .post("/blog/posts")
+        .header("x-csrf-token", &token)
+        .form(&[("title", "Live Post"), ("body", "Streamed in real time over SSE.")])
+        .send()
+        .await
+        .expect("create");
+    assert_eq!(created.status().as_u16(), 303);
+
+    // Read the broadcast Turbo Stream event from the open SSE connection.
+    let mut stream_res = stream_res;
+    let mut received = String::new();
+    let outcome = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+        while let Some(chunk) = stream_res.chunk().await.expect("read chunk") {
+            received.push_str(&String::from_utf8_lossy(&chunk));
+            if received.contains("turbo-stream") {
+                return;
+            }
+        }
+    })
+    .await;
+
+    assert!(outcome.is_ok(), "timed out waiting for SSE; received: {received:?}");
+    assert!(received.contains("turbo-stream"), "received: {received:?}");
+    assert!(received.contains("Live Post"), "received: {received:?}");
+}
+
+#[tokio::test]
 async fn delete_post() {
     let app = app_or_skip!("delete_post");
     app.login_admin().await;
