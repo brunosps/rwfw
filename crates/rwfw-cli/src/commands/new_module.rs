@@ -19,7 +19,7 @@ pub async fn run(name: &str) -> anyhow::Result<()> {
 
     fs::create_dir_all(module_dir.join("src/routes"))?;
     fs::create_dir_all(module_dir.join("src/migrations"))?;
-    fs::create_dir_all(module_dir.join("web/pages"))?;
+    fs::create_dir_all(module_dir.join("web/templates"))?;
 
     fs::write(
         module_dir.join("Cargo.toml"),
@@ -38,8 +38,8 @@ pub async fn run(name: &str) -> anyhow::Result<()> {
         index_route_rs(&module, &title),
     )?;
     fs::write(
-        module_dir.join("web/pages/Index.tsx"),
-        index_page_tsx(&title),
+        module_dir.join("web/templates/index.html.j2"),
+        index_page_template(&title),
     )?;
 
     insert_once(
@@ -211,6 +211,10 @@ impl Module for {pascal}Module {{
             icon: None,
         }}]
     }}
+
+    fn web_root(&self) -> Option<std::path::PathBuf> {{
+        Some(std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("web"))
+    }}
 }}
 
 inventory::submit! {{
@@ -233,45 +237,36 @@ pub fn migrations() -> Vec<Migration> {
 
 fn index_route_rs(module: &str, title: &str) -> String {
     format!(
-        r#"use axum::response::IntoResponse;
+        r#"use axum::response::Response;
 use axum::routing;
 use rwfw_core::app::AppState;
-use rwfw_core::inertia::Inertia;
+use rwfw_core::view::View;
 
 pub fn route() -> axum::routing::MethodRouter<AppState> {{
     routing::get(get)
 }}
 
-async fn get(i: Inertia) -> impl IntoResponse {{
-    i.render_with_ssr(
-        "{module}/Index",
+async fn get(v: View) -> Response {{
+    v.render(
+        "{module}/index",
         serde_json::json!({{
             "title": "{title}"
         }}),
     )
-    .await
 }}
 "#
     )
 }
 
-fn index_page_tsx(title: &str) -> String {
+fn index_page_template(title: &str) -> String {
     format!(
-        r#"import AppLayout from '@app/layouts/AppLayout'
-
-interface Props {{
-  title: string
-}}
-
-export default function Index({{ title }}: Props) {{
-  return (
-    <AppLayout>
-      <div className="max-w-4xl">
-        <h1 className="text-4xl font-bold text-gray-900 mb-4">{{title ?? '{title}'}}</h1>
-      </div>
-    </AppLayout>
-  )
-}}
+        r#"{{% extends "layouts/app.html.j2" %}}
+{{% block title %}}{{{{ title }}}}{{% endblock %}}
+{{% block content %}}
+<div class="max-w-4xl">
+  <h1 class="text-4xl font-bold text-gray-900 mb-4">{{{{ title | default("{title}") }}}}</h1>
+</div>
+{{% endblock %}}
 "#
     )
 }
