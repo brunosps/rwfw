@@ -1,0 +1,33 @@
+[package]
+name = "rwfw-tauri"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Boot the rwfw axum app in-process on 127.0.0.1:0 with graceful shutdown, for a Tauri desktop window."
+
+[lib]
+name = "rwfw_tauri"
+path = "src/lib.rs"
+
+[features]
+default = []
+# Pulls in Tauri for the desktop window glue. The headless server API + its test
+# work without it, so a plain `cargo test` needs no webkit/system deps.
+desktop = ["dep:tauri"]
+
+[dependencies]
+# Reuse the app's router factory + migrations (which link the modules).
+rwfw-app = { path = "../rwfw-app" }
+rwfw-core = { path = "../rwfw-core" }
+axum = { workspace = true }
+tokio = { workspace = true }
+tokio-util = "0.7"
+tracing = { workspace = true }
+anyhow = { workspace = true }
+
+tauri = { version = "2", optional = true }
+
+[dev-dependencies]
+reqwest = { version = "0.12", features = ["json"] }
+serde_json = { workspace = true }
+tempfile = "3"

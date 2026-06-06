@@ -8,6 +8,8 @@ extern crate mod_auth;
 extern crate mod_blog;
 extern crate mod_home;
 
+mod embed;
+
 pub fn registered_modules() -> Vec<Box<dyn Module>> {
     inventory::iter::<ModuleRegistration>
         .into_iter()
@@ -20,12 +22,16 @@ pub fn registered_modules() -> Vec<Box<dyn Module>> {
 
 pub async fn build_router(config: AppConfig) -> anyhow::Result<Router> {
     let mut app_builder = rwfw_core::app::RwfwApp::new(config)
-        .web_root(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("web"));
+        .web_root(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("web"))
+        .template_embed(embed::template_embed())
+        .asset_embed(embed::asset_embed());
 
     for module in registered_modules() {
         app_builder = app_builder.module(module);
     }
 
+    // `/vendor` and `/assets` are registered by `RwfwApp::build` itself, so
+    // generated apps get them too.
     Ok(app_builder
         .build()
         .await?

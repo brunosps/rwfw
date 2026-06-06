@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="pt-br">
+<html lang="pt-br" class="h-full antialiased">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="csrf-token" content="{{ csrf_token }}">
-  <title>{% block title %}RWFW{% endblock %}</title>
+  <title>{% block title %}{{ app_title | default(value="RWFW") }}{% endblock %}</title>
   <link rel="stylesheet" href="/assets/app.css">
   <script type="importmap">
   {
@@ -20,7 +20,7 @@
     window.Stimulus = Application.start()
   </script>
 </head>
-<body class="bg-gray-50 text-gray-900">
+<body class="min-h-full bg-slate-50 text-slate-900 antialiased">
   {% block body %}{% endblock %}
 </body>
 </html>

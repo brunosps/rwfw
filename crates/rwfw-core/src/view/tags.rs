@@ -60,6 +60,44 @@ impl ComponentRegistry {
         Self { defs }
     }
 
+    /// Scan all layers (embedded baseline, source roots, disk overlay) for
+    /// components, with later layers overriding earlier ones.
+    pub fn scan_layered(layers: &super::renderer::Layers) -> Self {
+        let mut defs = BTreeMap::new();
+
+        // 1) Embedded baseline (lowest precedence).
+        if let Some(embed) = &layers.embed {
+            for key in embed.iter() {
+                let Some(name) = key
+                    .strip_prefix("components/")
+                    .and_then(|r| r.strip_suffix("/index.html.j2"))
+                else {
+                    continue;
+                };
+                if name.contains('/') {
+                    continue; // top-level component dirs only
+                }
+                if let Some(bytes) = embed.get(&key) {
+                    if let Ok(src) = std::str::from_utf8(&bytes) {
+                        defs.entry(name.to_string()).or_insert_with(|| parse_def(src));
+                    }
+                }
+            }
+        }
+
+        // 2) Source roots override the baseline.
+        for root in &layers.roots {
+            scan_dir_override(&root.dir.join("components"), &mut defs);
+        }
+
+        // 3) Disk overlay wins.
+        if let Some(overlay) = &layers.overlay_root {
+            scan_dir_override(&overlay.join("templates").join("components"), &mut defs);
+        }
+
+        Self { defs }
+    }
+
     fn get(&self, name: &str) -> Option<&ComponentDef> {
         self.defs.get(name)
     }
@@ -89,6 +127,25 @@ fn scan_dir(dir: &Path, defs: &mut BTreeMap<String, ComponentDef>) {
         if let Ok(source) = std::fs::read_to_string(&index) {
             defs.entry(name.to_string())
                 .or_insert_with(|| parse_def(&source));
+        }
+    }
+}
+
+/// Like [`scan_dir`] but overrides existing entries (higher-precedence layer).
+fn scan_dir_override(dir: &Path, defs: &mut BTreeMap<String, ComponentDef>) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_dir() {
+            continue;
+        }
+        let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+            continue;
+        };
+        if let Ok(source) = std::fs::read_to_string(path.join("index.html.j2")) {
+            defs.insert(name.to_string(), parse_def(&source));
         }
     }
 }

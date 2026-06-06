@@ -2,55 +2,65 @@ use rwfw_core::migration::Migration;
 
 pub fn migrations() -> Vec<Migration> {
     vec![
-        Migration::new(
+        Migration::with_sqlite(
             "202605060000",
             "enable_pgcrypto",
             include_str!("202605060000_enable_pgcrypto.sql"),
+            include_str!("202605060000_enable_pgcrypto.sqlite.sql"),
         ),
-        Migration::new(
+        Migration::with_sqlite(
             "202605060001",
             "create_auth_schema",
             include_str!("202605060001_create_auth_schema.sql"),
+            include_str!("202605060001_create_auth_schema.sqlite.sql"),
         ),
-        Migration::new(
+        Migration::with_sqlite(
             "202605060002",
             "create_users_table",
             include_str!("202605060002_create_users_table.sql"),
+            include_str!("202605060002_create_users_table.sqlite.sql"),
         ),
-        Migration::new(
+        Migration::with_sqlite(
             "202605060003",
             "create_sessions_table",
             include_str!("202605060003_create_sessions_table.sql"),
+            include_str!("202605060003_create_sessions_table.sqlite.sql"),
         ),
-        Migration::new(
+        Migration::with_sqlite(
             "202605060004",
             "create_roles_table",
             include_str!("202605060004_create_roles_table.sql"),
+            include_str!("202605060004_create_roles_table.sqlite.sql"),
         ),
-        Migration::new(
+        Migration::with_sqlite(
             "202605060005",
             "create_permissions_table",
             include_str!("202605060005_create_permissions_table.sql"),
+            include_str!("202605060005_create_permissions_table.sqlite.sql"),
         ),
-        Migration::new(
+        Migration::with_sqlite(
             "202605060006",
             "create_user_roles_table",
             include_str!("202605060006_create_user_roles_table.sql"),
+            include_str!("202605060006_create_user_roles_table.sqlite.sql"),
         ),
-        Migration::new(
+        Migration::with_sqlite(
             "202605060007",
             "create_role_permissions_table",
             include_str!("202605060007_create_role_permissions_table.sql"),
+            include_str!("202605060007_create_role_permissions_table.sqlite.sql"),
         ),
-        Migration::new(
+        Migration::with_sqlite(
             "202605060008",
             "create_oauth_identities_table",
             include_str!("202605060008_create_oauth_identities_table.sql"),
+            include_str!("202605060008_create_oauth_identities_table.sqlite.sql"),
         ),
-        Migration::new(
+        Migration::with_sqlite(
             "202605060009",
             "create_oauth_login_states_table",
             include_str!("202605060009_create_oauth_login_states_table.sql"),
+            include_str!("202605060009_create_oauth_login_states_table.sqlite.sql"),
         ),
     ]
 }

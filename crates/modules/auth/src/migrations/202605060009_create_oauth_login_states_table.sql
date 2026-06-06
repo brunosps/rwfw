@@ -1,4 +1,4 @@
-CREATE TABLE IF NOT EXISTS auth.oauth_login_states (
+CREATE TABLE IF NOT EXISTS auth_oauth_login_states (
                 id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                 provider VARCHAR(64) NOT NULL,
                 state VARCHAR(255) NOT NULL UNIQUE,

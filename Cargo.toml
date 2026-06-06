@@ -6,6 +6,7 @@ members = [
     "crates/rwfw-macros",
     "crates/rwfw-cli",
     "crates/rwfw-app",
+    "crates/rwfw-tauri",
     "crates/modules/home",
     "crates/modules/auth",
     "crates/modules/blog",
@@ -25,7 +26,7 @@ tower-http = { version = "0.6", features = ["fs", "trace", "cors"] }
 tower-sessions = "0.14"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-sea-orm = { version = "1", features = ["sqlx-postgres", "runtime-tokio-rustls", "macros"] }
+sea-orm = { version = "1", features = ["sqlx-postgres", "sqlx-sqlite", "runtime-tokio-rustls", "macros"] }
 async-trait = "0.1"
 inventory = "0.3"
 tracing = "0.1"

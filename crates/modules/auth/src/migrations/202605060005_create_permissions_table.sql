@@ -1,4 +1,4 @@
-CREATE TABLE IF NOT EXISTS auth.permissions (
+CREATE TABLE IF NOT EXISTS auth_permissions (
                 id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                 name VARCHAR(255) NOT NULL UNIQUE,
                 description TEXT,

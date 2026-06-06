@@ -137,6 +137,7 @@ fn build_shared_props(
         "errors": errors,
         "csrf_token": csrf_token,
         "modules": state.modules_nav(),
+        "app_title": state.config.app_title(),
     })
 }
 

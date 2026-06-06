@@ -53,6 +53,12 @@ impl AppConfig {
         Ok(self.inner.get::<LoggingConfig>("logging")?)
     }
 
+    pub fn app_title(&self) -> String {
+        self.inner
+            .get::<String>("app.title")
+            .unwrap_or_else(|_| "RWFW".to_string())
+    }
+
     pub fn module_config<T: DeserializeOwned>(&self, module: &str) -> anyhow::Result<T> {
         Ok(self.inner.get::<T>(module)?)
     }
@@ -69,5 +75,17 @@ impl AppConfig {
             .set_override("database.url", database_url)?
             .build()?;
         Ok(Self { inner: config })
+    }
+
+    /// Build a test config backed by a SQLite file (or `:memory:`). Used by the
+    /// SQLite test harness so the suite runs with no external Postgres.
+    #[doc(hidden)]
+    pub fn for_test_sqlite(path: &str) -> anyhow::Result<Self> {
+        let url = if path == ":memory:" {
+            "sqlite::memory:".to_string()
+        } else {
+            crate::db::sqlite_url_from_path(path)
+        };
+        Self::for_test(&url)
     }
 }

@@ -22,7 +22,7 @@ impl TestApp {
     /// Spawn the full application against the test database (running migrations
     /// first). Returns `None` (skip) when `RWFW_TEST_DATABASE_URL` is unset.
     pub async fn spawn() -> Option<TestApp> {
-        let db_url = std::env::var("RWFW_TEST_DATABASE_URL").ok()?;
+        let db_url = test_db_url().await;
 
         let config = AppConfig::for_test(&db_url).expect("build test config");
 
@@ -154,4 +154,25 @@ fn extract_csrf(html: &str) -> Option<String> {
     let rest = &html[start..];
     let end = rest.find('"')?;
     Some(rest[..end].to_string())
+}
+
+/// The database URL for the test process: an explicit `RWFW_TEST_DATABASE_URL`
+/// (e.g. Postgres in CI) when set, otherwise a process-wide temp SQLite file so
+/// the suite runs with no external database. All `TestApp`s in a process share
+/// it (migrations run once); unique per-call emails keep parallel tests apart.
+async fn test_db_url() -> String {
+    static URL: tokio::sync::OnceCell<String> = tokio::sync::OnceCell::const_new();
+    URL.get_or_init(|| async {
+        if let Ok(url) = std::env::var("RWFW_TEST_DATABASE_URL") {
+            return url;
+        }
+        let path = std::env::temp_dir().join(format!("rwfw_test_{}.db", std::process::id()));
+        // Start from a clean DB each run.
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_file(format!("{}-wal", path.display()));
+        let _ = std::fs::remove_file(format!("{}-shm", path.display()));
+        rwfw_core::db::sqlite_url_from_path(&path)
+    })
+    .await
+    .clone()
 }

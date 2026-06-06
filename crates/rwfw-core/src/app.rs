@@ -8,7 +8,6 @@ use crate::view::{TemplateRoot, ViewRenderer};
 use sea_orm::DatabaseConnection;
 use std::path::PathBuf;
 use std::sync::Arc;
-use tower_http::services::ServeDir;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -19,6 +18,12 @@ pub struct AppState {
     pub view: ViewRenderer,
     /// Broadcast channel for Turbo Stream fragments delivered over SSE.
     pub broadcaster: tokio::sync::broadcast::Sender<String>,
+    /// Disk-overlay root (`<exe>/web`) for runtime asset/template overrides.
+    pub overlay_root: Option<PathBuf>,
+    /// App web root (`CARGO_MANIFEST_DIR/web`) for disk asset serving in dev.
+    pub app_web_root: Option<PathBuf>,
+    /// Embedded static assets (vendor + assets); packaged fallback.
+    pub asset_embed: Option<crate::view::AssetEmbed>,
     modules_nav: Arc<Vec<ModuleNav>>,
 }
 
@@ -43,6 +48,8 @@ pub struct RwfwApp {
     modules: Vec<Box<dyn Module>>,
     config: AppConfig,
     app_web_root: Option<PathBuf>,
+    template_embed: Option<crate::view::TemplateEmbed>,
+    asset_embed: Option<crate::view::AssetEmbed>,
 }
 
 impl RwfwApp {
@@ -51,7 +58,23 @@ impl RwfwApp {
             modules: Vec::new(),
             config,
             app_web_root: None,
+            template_embed: None,
+            asset_embed: None,
         }
+    }
+
+    /// Provide the embedded, canonical-keyed template baseline (from the app
+    /// crate's `rust-embed`). Used as the fallback source in a packaged binary.
+    pub fn template_embed(mut self, embed: crate::view::TemplateEmbed) -> Self {
+        self.template_embed = Some(embed);
+        self
+    }
+
+    /// Provide embedded static assets (vendor + assets); packaged fallback when
+    /// the on-disk web root is absent.
+    pub fn asset_embed(mut self, embed: crate::view::AssetEmbed) -> Self {
+        self.asset_embed = Some(embed);
+        self
     }
 
     /// Set the app-level web root (containing `templates/`, `vendor/`, `assets/`).
@@ -115,7 +138,12 @@ impl RwfwApp {
         if let Some(app_web) = &self.app_web_root {
             template_roots.push(TemplateRoot::app(app_web.join("templates")));
         }
-        let view = ViewRenderer::new(template_roots);
+        let overlay_root = crate::view::exe_overlay_root();
+        let view = ViewRenderer::layered(crate::view::Layers {
+            overlay_root: overlay_root.clone(),
+            roots: template_roots,
+            embed: self.template_embed.clone(),
+        });
 
         let shared_data = Arc::new(SharedData::default());
         let (broadcaster, _rx) = tokio::sync::broadcast::channel::<String>(256);
@@ -127,6 +155,9 @@ impl RwfwApp {
             shared_data,
             view,
             broadcaster,
+            overlay_root,
+            app_web_root: self.app_web_root.clone(),
+            asset_embed: self.asset_embed.clone(),
             modules_nav: Arc::new(modules_nav),
         };
 
@@ -135,13 +166,13 @@ impl RwfwApp {
         router = router.route("/favicon.ico", axum::routing::get(favicon_handler));
         router = router.route("/components", axum::routing::get(components_catalog));
 
-        // Static assets (vendored JS, compiled CSS) served from the app web root
-        // in both dev and prod — no npm bundler involved.
-        if let Some(app_web) = &self.app_web_root {
-            router = router
-                .nest_service("/vendor", ServeDir::new(app_web.join("vendor")))
-                .nest_service("/assets", ServeDir::new(app_web.join("assets")));
-        }
+        // Static assets, available to every app built via RwfwApp. `/assets`
+        // resolves disk overlay -> app web root -> embed; `/vendor` is
+        // disk-or-embed only (locked). Registered before `with_state` so the
+        // handlers can read `AppState`.
+        router = router
+            .route("/vendor/{*path}", axum::routing::get(vendor_handler))
+            .route("/assets/{*path}", axum::routing::get(asset_handler));
 
         router = router.layer(middleware::from_fn_with_state(
             state.clone(),
@@ -182,4 +213,66 @@ async fn health_handler() -> axum::Json<serde_json::Value> {
 
 async fn favicon_handler() -> axum::http::StatusCode {
     axum::http::StatusCode::NO_CONTENT
+}
+
+/// `/vendor/*` — locked JS. Served from the app web root (dev) or the embedded
+/// baseline (packaged); never from the disk overlay.
+async fn vendor_handler(
+    axum::extract::State(state): axum::extract::State<AppState>,
+    axum::extract::Path(path): axum::extract::Path<String>,
+) -> axum::response::Response {
+    use axum::response::IntoResponse;
+    if let Some(root) = &state.app_web_root {
+        if let Some(fp) = crate::view::safe_join(&root.join("vendor"), &path) {
+            if let Ok(bytes) = std::fs::read(&fp) {
+                return bytes_response(&path, bytes.into());
+            }
+        }
+    }
+    if let Some(embed) = &state.asset_embed {
+        if let Some(bytes) = embed.vendor(&path) {
+            return bytes_response(&path, bytes);
+        }
+    }
+    axum::http::StatusCode::NOT_FOUND.into_response()
+}
+
+/// `/assets/*` — disk overlay (`<exe>/web/assets`) → app web root (dev) → embed.
+async fn asset_handler(
+    axum::extract::State(state): axum::extract::State<AppState>,
+    axum::extract::Path(path): axum::extract::Path<String>,
+) -> axum::response::Response {
+    use axum::response::IntoResponse;
+    if let Some(overlay) = &state.overlay_root {
+        if let Some(fp) = crate::view::safe_join(&overlay.join("assets"), &path) {
+            if let Ok(bytes) = std::fs::read(&fp) {
+                return bytes_response(&path, bytes.into());
+            }
+        }
+    }
+    if let Some(root) = &state.app_web_root {
+        if let Some(fp) = crate::view::safe_join(&root.join("assets"), &path) {
+            if let Ok(bytes) = std::fs::read(&fp) {
+                return bytes_response(&path, bytes.into());
+            }
+        }
+    }
+    if let Some(embed) = &state.asset_embed {
+        if let Some(bytes) = embed.asset(&path) {
+            return bytes_response(&path, bytes);
+        }
+    }
+    axum::http::StatusCode::NOT_FOUND.into_response()
+}
+
+fn bytes_response(rel: &str, bytes: std::borrow::Cow<'static, [u8]>) -> axum::response::Response {
+    use axum::response::IntoResponse;
+    let mime = mime_guess::from_path(rel).first_or_octet_stream();
+    let ctype = axum::http::HeaderValue::from_str(mime.as_ref())
+        .unwrap_or_else(|_| axum::http::HeaderValue::from_static("application/octet-stream"));
+    (
+        [(axum::http::header::CONTENT_TYPE, ctype)],
+        bytes.into_owned(),
+    )
+        .into_response()
 }
