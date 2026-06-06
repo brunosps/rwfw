@@ -32,7 +32,7 @@ async fn home_renders_hotwire_html() {
     );
 
     // Sidebar (shared props / modules nav) rendered.
-    assert!(body.contains("Modular Framework"), "missing app layout sidebar");
+    assert!(body.contains("Navigation"), "missing app layout sidebar");
 
     // No leftover Inertia/React payload.
     assert!(!body.contains("data-page="), "unexpected Inertia payload");

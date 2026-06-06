@@ -53,6 +53,12 @@ impl AppConfig {
         Ok(self.inner.get::<LoggingConfig>("logging")?)
     }
 
+    pub fn app_title(&self) -> String {
+        self.inner
+            .get::<String>("app.title")
+            .unwrap_or_else(|_| "RWFW".to_string())
+    }
+
     pub fn module_config<T: DeserializeOwned>(&self, module: &str) -> anyhow::Result<T> {
         Ok(self.inner.get::<T>(module)?)
     }

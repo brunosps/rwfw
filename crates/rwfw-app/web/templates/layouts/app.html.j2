@@ -1,37 +1,78 @@
 {% extends "layouts/base.html.j2" %}
 {% block body %}
-<div class="min-h-screen flex">
-  <aside class="w-64 bg-gray-900 text-white p-4 flex flex-col">
-    <div class="mb-8">
-      <h1 class="text-xl font-bold">RWFW</h1>
-      <p class="text-gray-400 text-sm">Modular Framework</p>
+<div class="min-h-screen flex bg-slate-50">
+  <aside class="w-64 shrink-0 flex flex-col bg-gradient-to-b from-slate-900 to-slate-950 text-slate-200">
+    <div class="px-5 pt-6 pb-5">
+      <a href="/" class="flex items-center gap-3 group">
+        <span class="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 text-white font-bold shadow-lg shadow-indigo-900/40">
+          {{ app_title | default(value="RWFW") | first | upper }}
+        </span>
+        <span class="leading-tight">
+          <span class="block text-base font-semibold text-white tracking-tight">{{ app_title | default(value="RWFW") }}</span>
+          <span class="block text-[11px] font-medium text-slate-400">Modular workspace</span>
+        </span>
+      </a>
     </div>
-    <nav class="flex-1 space-y-1">
-      {% for mod in modules %}
-        {% for item in mod.nav_items %}
-          <a href="{{ item.href }}" class="block px-3 py-2 rounded-md text-sm hover:bg-gray-800 transition-colors">{{ item.label }}</a>
+
+    <nav class="flex-1 overflow-y-auto px-3 py-2">
+      <p class="px-3 pb-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-500">Navigation</p>
+      <div class="space-y-0.5">
+        {% for mod in modules %}
+          {% for item in mod.nav_items %}
+            <a href="{{ item.href }}"
+               class="group flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-slate-300 transition-colors hover:bg-white/10 hover:text-white">
+              <span class="flex h-5 w-5 items-center justify-center rounded-md bg-white/5 text-slate-400 transition-colors group-hover:bg-white/10 group-hover:text-white">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                  <path d="M10.707 2.293a1 1 0 00-1.414 0l-7 7a1 1 0 001.414 1.414L4 10.414V17a1 1 0 001 1h3a1 1 0 001-1v-3h2v3a1 1 0 001 1h3a1 1 0 001-1v-6.586l.293.293a1 1 0 001.414-1.414l-7-7z" />
+                </svg>
+              </span>
+              <span class="truncate">{{ item.label }}</span>
+            </a>
+          {% endfor %}
         {% endfor %}
-      {% endfor %}
+      </div>
     </nav>
+
     {% if auth and auth.user %}
-    <div class="border-t border-gray-700 pt-4 mt-4">
-      <p class="text-sm text-gray-300">{{ auth.user.name }}</p>
-      <p class="text-xs text-gray-500 mb-3">{{ auth.user.email }}</p>
-      <form method="post" action="/auth/logout">
-        <input type="hidden" name="_csrf" value="{{ csrf_token }}">
-        <button type="submit" class="text-xs text-gray-400 hover:text-white">Sign out</button>
-      </form>
+    <div class="border-t border-white/10 p-4">
+      <div class="flex items-center gap-3">
+        <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-700 text-sm font-semibold text-white">
+          {{ auth.user.name | first | upper }}
+        </span>
+        <div class="min-w-0 flex-1">
+          <p class="truncate text-sm font-medium text-white">{{ auth.user.name }}</p>
+          <p class="truncate text-xs text-slate-400">{{ auth.user.email }}</p>
+        </div>
+        <form method="post" action="/auth/logout">
+          <input type="hidden" name="_csrf" value="{{ csrf_token }}">
+          <button type="submit" title="Sign out"
+                  class="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-white/10 hover:text-white">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+              <path fill-rule="evenodd" d="M3 3a1 1 0 011-1h6a1 1 0 011 1v1a1 1 0 11-2 0V4H5v12h4v-1a1 1 0 112 0v1a1 1 0 01-1 1H4a1 1 0 01-1-1V3z" clip-rule="evenodd" />
+              <path fill-rule="evenodd" d="M14.293 6.293a1 1 0 011.414 0l3 3a1 1 0 010 1.414l-3 3a1 1 0 01-1.414-1.414L15.586 11H8a1 1 0 110-2h7.586l-1.293-1.293a1 1 0 010-1.414z" clip-rule="evenodd" />
+            </svg>
+          </button>
+        </form>
+      </div>
     </div>
     {% else %}
-    <div class="border-t border-gray-700 pt-4 mt-4">
-      <a href="/auth/login" class="text-xs text-gray-400 hover:text-white">Sign in</a>
+    <div class="border-t border-white/10 p-4">
+      <a href="/auth/login"
+         class="flex items-center justify-center gap-2 rounded-lg bg-white/5 px-3 py-2 text-sm font-medium text-slate-200 transition-colors hover:bg-white/10 hover:text-white">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+          <path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd" />
+        </svg>
+        Sign in
+      </a>
     </div>
     {% endif %}
   </aside>
 
-  <main class="flex-1 p-8">
-    <x-flash :flash="flash" />
-    {% block content %}{% endblock %}
+  <main class="flex-1 min-w-0 bg-slate-50">
+    <div class="mx-auto max-w-6xl px-6 py-8 sm:px-8 lg:px-10">
+      <x-flash :flash="flash" />
+      {% block content %}{% endblock %}
+    </div>
   </main>
 </div>
 {% endblock %}

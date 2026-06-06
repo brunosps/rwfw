@@ -1,41 +1,45 @@
 {% extends "layouts/auth.html.j2" %}
 {% block title %}Sign In{% endblock %}
 {% block content %}
-<form method="post" action="/auth/login" class="mt-8 space-y-6 bg-white p-8 rounded-lg shadow-sm">
+<form method="post" action="/auth/login" class="space-y-6 rounded-xl border border-slate-200 bg-white p-8 shadow-sm">
   <input type="hidden" name="_csrf" value="{{ csrf_token }}">
-  <h2 class="text-2xl font-bold text-center">Sign In</h2>
+
+  <div class="space-y-1 text-center">
+    <h2 class="font-serif text-3xl font-semibold text-slate-900">Sign In</h2>
+    <p class="text-sm text-slate-500">Enter your details to access your account.</p>
+  </div>
 
   {% if ssoProviders | length > 0 %}
   <div class="space-y-3">
     {% for p in ssoProviders %}
-      <a href="{{ p.loginUrl }}" class="block w-full rounded-md border border-gray-300 px-4 py-2 text-center text-sm font-semibold text-gray-800 hover:bg-gray-50">Continue with {{ p.displayName }}</a>
+      <a href="{{ p.loginUrl }}" class="block w-full rounded-lg border border-slate-300 px-4 py-2.5 text-center text-sm font-semibold text-slate-800 transition hover:bg-slate-50">Continue with {{ p.displayName }}</a>
     {% endfor %}
-    <div class="relative">
-      <div class="absolute inset-0 flex items-center"><div class="w-full border-t border-gray-200"></div></div>
-      <div class="relative flex justify-center text-xs uppercase"><span class="bg-white px-2 text-gray-500">or sign in locally</span></div>
+    <div class="relative py-1">
+      <div class="absolute inset-0 flex items-center"><div class="w-full border-t border-slate-200"></div></div>
+      <div class="relative flex justify-center text-xs uppercase tracking-wide"><span class="bg-white px-3 text-slate-400">or sign in locally</span></div>
     </div>
   </div>
   {% endif %}
 
   <div>
-    <label for="email" class="block text-sm font-medium text-gray-700">Email</label>
+    <label for="email" class="block text-sm font-medium text-slate-700">Email</label>
     <input id="email" name="email" type="email" value="{{ old.email | default('') }}"
-           class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500" required>
-    {% if errors.email %}<p class="mt-1 text-sm text-red-600">{{ errors.email }}</p>{% endif %}
+           class="mt-1.5 block w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-slate-900 shadow-sm transition placeholder:text-slate-400 focus:border-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900/20" required>
+    {% if errors.email %}<p class="mt-1.5 text-sm text-red-600">{{ errors.email }}</p>{% endif %}
   </div>
 
   <div>
-    <label for="password" class="block text-sm font-medium text-gray-700">Password</label>
+    <label for="password" class="block text-sm font-medium text-slate-700">Password</label>
     <input id="password" name="password" type="password"
-           class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500" required>
-    {% if errors.password %}<p class="mt-1 text-sm text-red-600">{{ errors.password }}</p>{% endif %}
+           class="mt-1.5 block w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-slate-900 shadow-sm transition placeholder:text-slate-400 focus:border-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900/20" required>
+    {% if errors.password %}<p class="mt-1.5 text-sm text-red-600">{{ errors.password }}</p>{% endif %}
   </div>
 
   <button type="submit" data-turbo-submits-with="Signing in..."
-          class="w-full py-2 px-4 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50">Sign In</button>
+          class="w-full rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-900/30 disabled:opacity-50">Sign In</button>
 
-  <p class="text-center text-sm text-gray-600">
-    Don't have an account? <a href="/auth/register" class="text-blue-600 hover:underline">Register</a>
+  <p class="text-center text-sm text-slate-600">
+    Don't have an account? <a href="/auth/register" class="font-medium text-slate-900 underline-offset-4 hover:underline">Register</a>
   </p>
 </form>
 {% endblock %}
