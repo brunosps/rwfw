@@ -68,3 +68,46 @@ pub fn uuid_literal(backend: DatabaseBackend, id: uuid::Uuid) -> String {
         _ => format!("'{id}'"),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn placeholders_are_backend_specific() {
+        use super::placeholder;
+        use sea_orm::DatabaseBackend;
+        assert_eq!(placeholder(DatabaseBackend::Postgres, 1), "$1");
+        assert_eq!(placeholder(DatabaseBackend::Postgres, 3), "$3");
+        assert_eq!(placeholder(DatabaseBackend::Sqlite, 1), "?");
+    }
+
+    /// Anti-injection guard. Every `escape_sql(...)` call in the auth and
+    /// migration modules must be applied ONLY to framework-generated timestamp
+    /// literals (`&now` / `&expires_at`) — every other dynamic value must be a
+    /// bound parameter via `Statement::from_sql_and_values`. A new raw-string
+    /// interpolation of user/dynamic input (e.g. `escape_sql(email)`) fails here.
+    #[test]
+    fn escape_sql_is_only_used_for_timestamp_literals() {
+        let sources = [
+            ("auth.rs", include_str!("auth.rs")),
+            ("migration.rs", include_str!("migration.rs")),
+        ];
+        for (name, src) in sources {
+            for line in src.lines() {
+                let trimmed = line.trim_start();
+                if trimmed.starts_with("//") || trimmed.starts_with('*') {
+                    continue;
+                }
+                if !trimmed.contains("escape_sql(") {
+                    continue;
+                }
+                let allowed = trimmed.contains("escape_sql(&now")
+                    || trimmed.contains("escape_sql(&expires_at");
+                assert!(
+                    allowed,
+                    "{name}: escape_sql() must wrap only framework timestamps; \
+                     bind dynamic values instead. Offending line: {trimmed}"
+                );
+            }
+        }
+    }
+}
