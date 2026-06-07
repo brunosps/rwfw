@@ -90,6 +90,7 @@ impl RwfwApp {
 
     pub async fn build(self) -> anyhow::Result<Router> {
         let db = crate::db::connect(&self.config).await?;
+        let security = self.config.security();
 
         let mut modules_nav = Vec::new();
         let mut template_roots: Vec<TemplateRoot> = Vec::new();
@@ -172,6 +173,20 @@ impl RwfwApp {
         // CSRF runs outermost: it issues the token (cookie + request extension)
         // before shared props read it, and verifies double-submit on form posts.
         router = router.layer(middleware::from_fn(crate::csrf::csrf_middleware));
+
+        // Security response headers (opt-out via `security.headers_enabled`).
+        router = crate::security::apply_security_headers(router, &security);
+
+        // Optional per-process rate limiting on `/auth/*` (opt-in; default off).
+        if security.rate_limit.enabled {
+            let limiter = crate::rate_limit::RateLimiter::new(
+                security.rate_limit.max_requests,
+                std::time::Duration::from_secs(security.rate_limit.window_secs),
+            );
+            router = router.layer(middleware::from_fn(
+                crate::rate_limit::rate_limit_middleware(limiter),
+            ));
+        }
 
         let router = router.with_state(state);
 

@@ -1134,6 +1134,15 @@ logging:
   level: "debug"
   format: "pretty"
 
+security:
+  headers_enabled: true
+  hsts: false
+  frame_options: "SAMEORIGIN"
+  rate_limit:
+    enabled: false
+    max_requests: 10
+    window_secs: 60
+
 auth:
   session_ttl: 86400
   oidc:
@@ -1280,6 +1289,15 @@ server:
 logging:
   level: "info"
   format: "json"
+
+security:
+  headers_enabled: true
+  hsts: true
+  frame_options: "SAMEORIGIN"
+  rate_limit:
+    enabled: false
+    max_requests: 10
+    window_secs: 60
 
 auth:
   session_ttl: 86400
