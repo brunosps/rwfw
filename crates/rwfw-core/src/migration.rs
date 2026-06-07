@@ -1,4 +1,5 @@
 use crate::module::Module;
+use crate::sql::escape_sql;
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement};
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
@@ -214,8 +215,4 @@ async fn record_applied(
     );
     db.execute_unprepared(&sql).await?;
     Ok(())
-}
-
-fn escape_sql(value: &str) -> String {
-    value.replace('\'', "''")
 }

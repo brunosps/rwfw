@@ -6,6 +6,7 @@ use axum::extract::{Request, State};
 use axum::http::request::Parts;
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Redirect, Response};
+use crate::sql::escape_sql;
 use sea_orm::{ConnectionTrait, DatabaseConnection, Statement};
 use serde::Serialize;
 
@@ -686,8 +687,4 @@ fn parse_cookie<'a>(cookie_header: &'a str, name: &str) -> Option<&'a str> {
         let (key, value) = cookie.trim().split_once('=')?;
         (key == name).then_some(value)
     })
-}
-
-fn escape_sql(value: &str) -> String {
-    value.replace('\'', "''")
 }

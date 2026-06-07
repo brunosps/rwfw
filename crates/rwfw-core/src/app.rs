@@ -1,5 +1,4 @@
 use crate::config::AppConfig;
-use crate::events::EventBus;
 use crate::inertia::SharedData;
 use crate::module::{Module, NavItem};
 use axum::Router;
@@ -13,7 +12,6 @@ use std::sync::Arc;
 pub struct AppState {
     pub config: Arc<AppConfig>,
     pub db: DatabaseConnection,
-    pub events: Arc<EventBus>,
     pub shared_data: Arc<SharedData>,
     pub view: ViewRenderer,
     /// Broadcast channel for Turbo Stream fragments delivered over SSE.
@@ -92,7 +90,6 @@ impl RwfwApp {
 
     pub async fn build(self) -> anyhow::Result<Router> {
         let db = crate::db::connect(&self.config).await?;
-        let events = Arc::new(EventBus::new());
 
         let mut modules_nav = Vec::new();
         let mut template_roots: Vec<TemplateRoot> = Vec::new();
@@ -127,11 +124,6 @@ impl RwfwApp {
                     nav_items: nav,
                 });
             }
-
-            // Register event handlers
-            for subscription in module.event_handlers() {
-                events.subscribe(subscription);
-            }
         }
 
         // App-level templates (layouts, shared partials) are the fallback root.
@@ -151,7 +143,6 @@ impl RwfwApp {
         let state = AppState {
             config: Arc::new(self.config),
             db,
-            events,
             shared_data,
             view,
             broadcaster,

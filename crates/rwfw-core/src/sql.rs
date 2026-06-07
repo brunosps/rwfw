@@ -10,6 +10,15 @@
 
 use sea_orm::DatabaseBackend;
 
+/// Escape a string for safe inclusion in a single-quoted SQL literal by doubling
+/// embedded quotes. The single sanctioned escaper for the few framework-owned
+/// raw-SQL sites that cannot use bind parameters (e.g. the migration ledger).
+/// Prefer parameterized queries (`Statement::from_sql_and_values`) for anything
+/// touching user input.
+pub(crate) fn escape_sql(value: &str) -> String {
+    value.replace('\'', "''")
+}
+
 /// Bind-parameter placeholder: `$N` on Postgres, `?` on SQLite/MySQL.
 pub fn placeholder(backend: DatabaseBackend, n: usize) -> String {
     match backend {

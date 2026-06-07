@@ -36,10 +36,3 @@ pub async fn require_auth(
     request.extensions_mut().insert(user);
     next.run(request).await
 }
-
-/// Inject shared auth data into the request extensions
-pub async fn shared_auth_data(request: Request, next: Next) -> Response {
-    // TODO: Extract session, look up user, inject into extensions
-    // This will be used by the Inertia shared data middleware
-    next.run(request).await
-}

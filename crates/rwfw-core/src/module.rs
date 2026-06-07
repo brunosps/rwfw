@@ -35,9 +35,6 @@ pub trait Module: Send + Sync {
     fn nav_items(&self) -> Vec<NavItem> {
         vec![]
     }
-    fn event_handlers(&self) -> Vec<crate::events::EventSubscription> {
-        vec![]
-    }
     /// Filesystem root for this module's web assets (`web/templates`,
     /// `web/components`). Implemented per-module via `CARGO_MANIFEST_DIR` so the
     /// path is absolute and independent of the process working directory.

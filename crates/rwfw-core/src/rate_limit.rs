@@ -31,7 +31,12 @@ impl RateLimiter {
     }
 
     pub fn check(&self, client_id: &str) -> bool {
-        let mut state = self.state.lock().unwrap();
+        // Recover from a poisoned lock instead of cascading panics: the guarded
+        // request-window map stays structurally valid after a handler panic.
+        let mut state = self.state.lock().unwrap_or_else(|poisoned| {
+            tracing::warn!("rate limiter mutex poisoned; recovering");
+            poisoned.into_inner()
+        });
         let now = Instant::now();
 
         let requests = state.clients.entry(client_id.to_string()).or_default();
