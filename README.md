@@ -1,6 +1,6 @@
 # RWFW
 
-RWFW is being shaped as a Rust web framework distributed primarily through a CLI. Current target: `0.1.0-alpha.1`.
+RWFW is being shaped as a Rust web framework distributed primarily through a CLI. Current target: `0.1.0-alpha.2`.
 
 The CLI generates a runnable starter application, while the framework crates provide the reusable runtime pieces: modules, routing, migrations, auth, server-side rendering with MiniJinja templates, Hotwire (Turbo + Stimulus), flash messages, and code generation conventions — with **zero npm/Node** in the frontend.
 
@@ -55,12 +55,12 @@ cargo run --manifest-path /home/bruno/code/rwfw/Cargo.toml -p rwfw-cli -- dev
 Before crates.io publishing is stable, distribute RWFW from a Git tag:
 
 ```bash
-git tag v0.1.0-alpha.1
-git push origin v0.1.0-alpha.1
-cargo install --git https://github.com/<org>/rwfw --tag v0.1.0-alpha.1 rwfw-cli
+git tag v0.1.0-alpha.2
+git push origin v0.1.0-alpha.2
+cargo install --git https://github.com/<org>/rwfw --tag v0.1.0-alpha.2 rwfw-cli
 rwfw new app demo-app --example ecommerce \
   --rwfw-git https://github.com/<org>/rwfw \
-  --rwfw-tag v0.1.0-alpha.1
+  --rwfw-tag v0.1.0-alpha.2
 ```
 
 The generated app pins all RWFW framework dependencies to that Git tag. This makes the app reproducible even while the framework API is still moving.

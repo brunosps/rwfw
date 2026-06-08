@@ -1,6 +1,6 @@
 # CLI Contract
 
-Version target: `0.1.0-alpha.1`.
+Version target: `0.1.0-alpha.2`.
 
 ## App Lifecycle
 
@@ -21,8 +21,8 @@ rwfw auth sso add keycloak --provider keycloak --issuer-url http://localhost:808
 Dependency source flags are mutually exclusive:
 
 - `--rwfw-path /path/to/rwfw`: local framework checkout, preferred for framework development.
-- `--rwfw-git https://github.com/<org>/rwfw --rwfw-tag v0.1.0-alpha.1`: Git/tag distribution, preferred for external alpha use.
-- `--rwfw-version 0.1.0-alpha.1`: published crate version, for the future crates.io path.
+- `--rwfw-git https://github.com/<org>/rwfw --rwfw-tag v0.1.0-alpha.2`: Git/tag distribution, preferred for external alpha use.
+- `--rwfw-version 0.1.0-alpha.2`: published crate version, for the future crates.io path.
 
 ## Module and Scaffold
 
