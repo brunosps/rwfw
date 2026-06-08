@@ -16,6 +16,9 @@ pub struct AppState {
     pub view: ViewRenderer,
     /// Broadcast channel for Turbo Stream fragments delivered over SSE.
     pub broadcaster: tokio::sync::broadcast::Sender<String>,
+    /// Dev-only channel that pushes live-reload tokens (`"css"` / `"reload"`) to
+    /// the browser via the `/__rwfw/livereload` SSE endpoint.
+    pub dev_reload: tokio::sync::broadcast::Sender<String>,
     /// Disk-overlay root (`<exe>/web`) for runtime asset/template overrides.
     pub overlay_root: Option<PathBuf>,
     /// App web root (`CARGO_MANIFEST_DIR/web`) for disk asset serving in dev.
@@ -94,6 +97,7 @@ impl RwfwApp {
 
         let mut modules_nav = Vec::new();
         let mut template_roots: Vec<TemplateRoot> = Vec::new();
+        let mut watch_roots: Vec<PathBuf> = Vec::new();
         let mut router = Router::new();
 
         for module in &self.modules {
@@ -103,6 +107,7 @@ impl RwfwApp {
             // Register this module's template root (namespaced by module name).
             if let Some(web) = module.web_root() {
                 template_roots.push(TemplateRoot::module(&name, web.join("templates")));
+                watch_roots.push(web);
             }
 
             tracing::info!(module = %name, prefix = %prefix, "Mounting module");
@@ -130,6 +135,7 @@ impl RwfwApp {
         // App-level templates (layouts, shared partials) are the fallback root.
         if let Some(app_web) = &self.app_web_root {
             template_roots.push(TemplateRoot::app(app_web.join("templates")));
+            watch_roots.push(app_web.clone());
         }
         let overlay_root = crate::view::exe_overlay_root();
         let view = ViewRenderer::layered(crate::view::Layers {
@@ -140,6 +146,7 @@ impl RwfwApp {
 
         let shared_data = Arc::new(SharedData::default());
         let (broadcaster, _rx) = tokio::sync::broadcast::channel::<String>(256);
+        let (dev_reload, _dev_rx) = tokio::sync::broadcast::channel::<String>(16);
 
         let state = AppState {
             config: Arc::new(self.config),
@@ -147,16 +154,27 @@ impl RwfwApp {
             shared_data,
             view,
             broadcaster,
+            dev_reload,
             overlay_root,
             app_web_root: self.app_web_root.clone(),
             asset_embed: self.asset_embed.clone(),
             modules_nav: Arc::new(modules_nav),
         };
 
+        // Dev-only: watch the app + module `web/` dirs and push reload signals to
+        // connected browsers over the `/__rwfw/livereload` SSE stream.
+        if state.config.is_development() {
+            crate::dev_reload::spawn_watcher(watch_roots, state.dev_reload.clone());
+        }
+
         // Add health check
         router = router.route("/health", axum::routing::get(health_handler));
         router = router.route("/favicon.ico", axum::routing::get(favicon_handler));
         router = router.route("/components", axum::routing::get(components_catalog));
+        router = router.route(
+            "/__rwfw/livereload",
+            axum::routing::get(livereload_handler),
+        );
 
         // Static assets, available to every app built via RwfwApp. `/assets`
         // resolves disk overlay -> app web root -> embed; `/vendor` is
@@ -217,6 +235,28 @@ async fn health_handler() -> axum::Json<serde_json::Value> {
     }))
 }
 
+/// Dev-only live-reload stream. Pushes `"css"` / `"reload"` tokens (produced by
+/// the file watcher) to the browser over SSE; the `dev-livereload.js` client
+/// hot-swaps the stylesheet or reloads the page. 404 outside development.
+async fn livereload_handler(
+    axum::extract::State(state): axum::extract::State<AppState>,
+) -> axum::response::Response {
+    use axum::response::IntoResponse;
+    use axum::response::sse::{Event, KeepAlive, Sse};
+    use tokio_stream::StreamExt;
+    use tokio_stream::wrappers::BroadcastStream;
+
+    if !state.config.is_development() {
+        return axum::http::StatusCode::NOT_FOUND.into_response();
+    }
+
+    let stream = BroadcastStream::new(state.dev_reload.subscribe()).filter_map(|msg| match msg {
+        Ok(token) => Some(Ok::<_, std::convert::Infallible>(Event::default().data(token))),
+        Err(_) => None,
+    });
+    Sse::new(stream).keep_alive(KeepAlive::default()).into_response()
+}
+
 async fn favicon_handler() -> axum::http::StatusCode {
     axum::http::StatusCode::NO_CONTENT
 }
@@ -231,13 +271,13 @@ async fn vendor_handler(
     if let Some(root) = &state.app_web_root {
         if let Some(fp) = crate::view::safe_join(&root.join("vendor"), &path) {
             if let Ok(bytes) = std::fs::read(&fp) {
-                return bytes_response(&path, bytes.into());
+                return bytes_response(&path, bytes.into(), state.config.is_development());
             }
         }
     }
     if let Some(embed) = &state.asset_embed {
         if let Some(bytes) = embed.vendor(&path) {
-            return bytes_response(&path, bytes);
+            return bytes_response(&path, bytes, state.config.is_development());
         }
     }
     axum::http::StatusCode::NOT_FOUND.into_response()
@@ -252,33 +292,42 @@ async fn asset_handler(
     if let Some(overlay) = &state.overlay_root {
         if let Some(fp) = crate::view::safe_join(&overlay.join("assets"), &path) {
             if let Ok(bytes) = std::fs::read(&fp) {
-                return bytes_response(&path, bytes.into());
+                return bytes_response(&path, bytes.into(), state.config.is_development());
             }
         }
     }
     if let Some(root) = &state.app_web_root {
         if let Some(fp) = crate::view::safe_join(&root.join("assets"), &path) {
             if let Ok(bytes) = std::fs::read(&fp) {
-                return bytes_response(&path, bytes.into());
+                return bytes_response(&path, bytes.into(), state.config.is_development());
             }
         }
     }
     if let Some(embed) = &state.asset_embed {
         if let Some(bytes) = embed.asset(&path) {
-            return bytes_response(&path, bytes);
+            return bytes_response(&path, bytes, state.config.is_development());
         }
     }
     axum::http::StatusCode::NOT_FOUND.into_response()
 }
 
-fn bytes_response(rel: &str, bytes: std::borrow::Cow<'static, [u8]>) -> axum::response::Response {
+fn bytes_response(
+    rel: &str,
+    bytes: std::borrow::Cow<'static, [u8]>,
+    is_dev: bool,
+) -> axum::response::Response {
+    use axum::http::{HeaderMap, HeaderValue};
+    use axum::http::header::{CACHE_CONTROL, CONTENT_TYPE};
     use axum::response::IntoResponse;
     let mime = mime_guess::from_path(rel).first_or_octet_stream();
-    let ctype = axum::http::HeaderValue::from_str(mime.as_ref())
-        .unwrap_or_else(|_| axum::http::HeaderValue::from_static("application/octet-stream"));
-    (
-        [(axum::http::header::CONTENT_TYPE, ctype)],
-        bytes.into_owned(),
-    )
-        .into_response()
+    let ctype = HeaderValue::from_str(mime.as_ref())
+        .unwrap_or_else(|_| HeaderValue::from_static("application/octet-stream"));
+    let mut headers = HeaderMap::new();
+    headers.insert(CONTENT_TYPE, ctype);
+    if is_dev {
+        // Live reload swaps `app.css?v=...`, but `no-cache` also keeps `.js`,
+        // templates and other dev assets from going stale between reloads.
+        headers.insert(CACHE_CONTROL, HeaderValue::from_static("no-cache"));
+    }
+    (headers, bytes.into_owned()).into_response()
 }

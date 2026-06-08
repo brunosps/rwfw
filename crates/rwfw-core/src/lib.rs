@@ -3,6 +3,7 @@ pub mod auth;
 pub mod config;
 pub mod csrf;
 pub mod db;
+pub mod dev_reload;
 pub mod error;
 pub mod forms;
 pub mod health;

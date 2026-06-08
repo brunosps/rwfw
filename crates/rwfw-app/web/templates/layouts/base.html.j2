@@ -19,6 +19,7 @@
     import { Application } from "@hotwired/stimulus"
     window.Stimulus = Application.start()
   </script>
+  {% if is_development %}<script src="/assets/dev-livereload.js" defer></script>{% endif %}
 </head>
 <body class="min-h-full bg-slate-50 text-slate-900 antialiased">
   {% block body %}{% endblock %}

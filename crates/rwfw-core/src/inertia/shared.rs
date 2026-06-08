@@ -63,7 +63,11 @@ pub async fn inertia_shared_middleware(
     next: Next,
 ) -> Response {
     let path = request.uri().path();
-    if path.starts_with("/assets/") || path.starts_with("/vendor/") || path == "/health" {
+    if path.starts_with("/assets/")
+        || path.starts_with("/vendor/")
+        || path.starts_with("/__rwfw/")
+        || path == "/health"
+    {
         return next.run(request).await;
     }
 
@@ -138,6 +142,7 @@ fn build_shared_props(
         "csrf_token": csrf_token,
         "modules": state.modules_nav(),
         "app_title": state.config.app_title(),
+        "is_development": state.config.is_development(),
     })
 }
 

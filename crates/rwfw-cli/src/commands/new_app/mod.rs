@@ -230,6 +230,10 @@ pub fn run(
     )?;
     write_file(&app_dir.join("crates/app/web/vendor.lock"), VENDOR_LOCK.to_string())?;
     write_file(&app_dir.join("crates/app/web/assets/app.css"), APP_CSS.to_string())?;
+    write_file(
+        &app_dir.join("crates/app/web/assets/dev-livereload.js"),
+        DEV_LIVERELOAD_JS.to_string(),
+    )?;
     write_binary_file(
         &app_dir.join("crates/app/web/vendor/turbo.min.js"),
         TURBO_JS,
@@ -573,6 +577,7 @@ const TURBO_JS: &[u8] = include_bytes!("../../../../rwfw-app/web/vendor/turbo.mi
 const STIMULUS_JS: &[u8] = include_bytes!("../../../../rwfw-app/web/vendor/stimulus.min.js");
 const VENDOR_LOCK: &str = include_str!("../../../../rwfw-app/web/vendor.lock");
 const APP_CSS: &str = include_str!("../../../../rwfw-app/web/assets/app.css");
+const DEV_LIVERELOAD_JS: &str = include_str!("../../../../rwfw-app/web/assets/dev-livereload.js");
 const BASE_LAYOUT_TEMPLATE: &str =
     include_str!("../../../../rwfw-app/web/templates/layouts/base.html.j2");
 const APP_LAYOUT_TEMPLATE: &str =
