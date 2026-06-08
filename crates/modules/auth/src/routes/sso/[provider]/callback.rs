@@ -61,7 +61,7 @@ async fn get(
     };
 
     let redirect_url = callback_url(config.oidc.redirect_base_url.as_deref(), &provider);
-    let identity = match oidc::exchange_code(
+    let (identity, id_token) = match oidc::exchange_code(
         &provider,
         provider_config,
         &redirect_url,
@@ -71,7 +71,7 @@ async fn get(
     )
     .await
     {
-        Ok(identity) => identity,
+        Ok(pair) => pair,
         Err(error) => {
             tracing::warn!(error = %error, provider = %provider, "OIDC callback failed");
             return Inertia::redirect_with_error("/auth/login", "SSO login failed");
@@ -90,7 +90,15 @@ async fn get(
     };
 
     let ttl = config.session_ttl;
-    let token = match rwfw_core::auth::create_session(&state.db, user_id, ttl).await {
+    let token = match rwfw_core::auth::create_session(
+        &state.db,
+        user_id,
+        ttl,
+        Some(&provider),
+        Some(&id_token),
+    )
+    .await
+    {
         Ok(token) => token,
         Err(error) => {
             tracing::warn!(error = %error, provider = %provider, "Failed to create RWFW session");

@@ -105,7 +105,7 @@ impl TestApp {
         .await
         .expect("ensure admin user");
 
-        let token = create_session(&self.db, report.user_id, 3600)
+        let token = create_session(&self.db, report.user_id, 3600, None, None)
             .await
             .expect("create session");
 

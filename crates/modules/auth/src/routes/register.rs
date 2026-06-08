@@ -45,7 +45,7 @@ async fn post(
             }
 
             let ttl = session_ttl(&state);
-            match rwfw_core::auth::create_session(&state.db, output.user.id, ttl).await {
+            match rwfw_core::auth::create_session(&state.db, output.user.id, ttl, None, None).await {
                 Ok(token) => {
                     let mut response = Redirect::to("/home").into_response();
                     rwfw_core::auth::append_set_cookie(

@@ -30,7 +30,7 @@ async fn post(State(state): State<AppState>, v: View, Form(input): Form<LoginUse
     match use_case.execute(&strategy, &state.db, input).await {
         Ok(output) => {
             let ttl = session_ttl(&state);
-            match rwfw_core::auth::create_session(&state.db, output.user_id, ttl).await {
+            match rwfw_core::auth::create_session(&state.db, output.user_id, ttl, None, None).await {
                 Ok(token) => {
                     let mut response = Redirect::to("/home").into_response();
                     rwfw_core::auth::append_set_cookie(

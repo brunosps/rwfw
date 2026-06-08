@@ -62,5 +62,12 @@ pub fn migrations() -> Vec<Migration> {
             include_str!("202605060009_create_oauth_login_states_table.sql"),
             include_str!("202605060009_create_oauth_login_states_table.sqlite.sql"),
         ),
+        // `ALTER TABLE ... ADD COLUMN` is identical on Postgres and SQLite, so a
+        // single body serves both backends.
+        Migration::new(
+            "202605060010",
+            "add_session_oidc",
+            include_str!("202605060010_add_session_oidc.sql"),
+        ),
     ]
 }

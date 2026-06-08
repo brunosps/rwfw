@@ -112,28 +112,69 @@ pub async fn create_session(
     db: &DatabaseConnection,
     user_id: uuid::Uuid,
     ttl_seconds: i64,
+    oidc_provider: Option<&str>,
+    id_token: Option<&str>,
 ) -> anyhow::Result<String> {
     let token = generate_session_token();
     let ttl_seconds = ttl_seconds.max(60);
     let expires_at = crate::sql::now_plus_seconds_iso(ttl_seconds);
     let backend = db.get_database_backend();
-    // user_id + token are bound; expires_at is a framework-generated ISO literal
-    // (binding a string into a Postgres `timestamptz` column would be rejected).
+    // user_id/token/oidc_provider/id_token are bound; expires_at is a
+    // framework-generated ISO literal (binding a string into a Postgres
+    // `timestamptz` column would be rejected). The OIDC columns are NULL for
+    // password logins and carry the provider name + raw id_token for SSO logins.
     let sql = format!(
-        "INSERT INTO auth_sessions (user_id, token, expires_at) \
-         VALUES ({}, {}, '{}')",
+        "INSERT INTO auth_sessions (user_id, token, expires_at, oidc_provider, id_token) \
+         VALUES ({}, {}, '{}', {}, {})",
         crate::sql::placeholder(backend, 1),
         crate::sql::placeholder(backend, 2),
-        escape_sql(&expires_at)
+        escape_sql(&expires_at),
+        crate::sql::placeholder(backend, 3),
+        crate::sql::placeholder(backend, 4),
     );
 
     db.execute(Statement::from_sql_and_values(
         backend,
         sql,
-        [user_id.into(), token.clone().into()],
+        [
+            user_id.into(),
+            token.clone().into(),
+            Value::String(oidc_provider.map(|s| Box::new(s.to_string()))),
+            Value::String(id_token.map(|s| Box::new(s.to_string()))),
+        ],
     ))
     .await?;
     Ok(token)
+}
+
+/// Read the OIDC provider name + raw id_token stored for a session. Both are
+/// present only for SSO logins; returns `None` for password sessions. Used to
+/// drive RP-initiated logout against the IdP.
+pub async fn session_oidc(
+    db: &DatabaseConnection,
+    token: &str,
+) -> anyhow::Result<Option<(String, String)>> {
+    let backend = db.get_database_backend();
+    let sql = format!(
+        "SELECT oidc_provider, id_token FROM auth_sessions WHERE token = {} LIMIT 1",
+        crate::sql::placeholder(backend, 1),
+    );
+    let Some(row) = db
+        .query_one(Statement::from_sql_and_values(
+            backend,
+            sql,
+            [token.to_owned().into()],
+        ))
+        .await?
+    else {
+        return Ok(None);
+    };
+    let provider: Option<String> = row.try_get("", "oidc_provider")?;
+    let id_token: Option<String> = row.try_get("", "id_token")?;
+    Ok(match (provider, id_token) {
+        (Some(provider), Some(id_token)) => Some((provider, id_token)),
+        _ => None,
+    })
 }
 
 pub async fn delete_session(db: &DatabaseConnection, token: &str) -> anyhow::Result<()> {
