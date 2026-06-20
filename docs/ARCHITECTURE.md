@@ -26,7 +26,7 @@ A generated app is a real starter application, not a temporary demo. It includes
 
 ## Current Alpha Shape
 
-For `0.1.0-alpha.2`, RWFW should be treated as a local-framework alpha:
+For `0.1.0-alpha.3`, RWFW should be treated as a local-framework alpha:
 
 - Generated apps depend on the framework via `--rwfw-path` while the framework is changing quickly.
 - Git/tag app generation via `--rwfw-git` and `--rwfw-tag` is the recommended alpha distribution path before crates.io.

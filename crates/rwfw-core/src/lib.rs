@@ -26,10 +26,10 @@ pub mod prelude {
     pub use crate::auth::CurrentUser;
     pub use crate::error::AppError;
     pub use crate::inertia::Inertia;
-    pub use crate::view::View;
     pub use crate::migration::Migration;
     pub use crate::module::{Module, ModuleRegistration, NavItem};
     pub use crate::use_case::UseCase;
+    pub use crate::view::View;
     pub use axum::extract::{Form, Path, Query, State};
     pub use axum::response::{IntoResponse, Redirect};
     pub use serde_json::json;

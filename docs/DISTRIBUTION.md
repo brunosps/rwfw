@@ -1,6 +1,6 @@
 # Distribution Plan
 
-Current target: `0.1.0-alpha.2`.
+Current target: `0.1.0-alpha.3`.
 
 ## Recommended Alpha Path
 
@@ -18,17 +18,17 @@ This keeps generated apps pinned to the local checkout while the framework API a
 For the first external alpha, cut a Git tag:
 
 ```bash
-git tag v0.1.0-alpha.2
-git push origin v0.1.0-alpha.2
+git tag v0.1.0-alpha.3
+git push origin v0.1.0-alpha.3
 ```
 
 Users can then install the CLI from Git:
 
 ```bash
-cargo install --git https://github.com/<org>/rwfw --tag v0.1.0-alpha.2 rwfw-cli
+cargo install --git https://github.com/<org>/rwfw --tag v0.1.0-alpha.3 rwfw-cli
 rwfw new app demo --example ecommerce \
   --rwfw-git https://github.com/<org>/rwfw \
-  --rwfw-tag v0.1.0-alpha.2
+  --rwfw-tag v0.1.0-alpha.3
 ```
 
 Generated apps should depend on the same Git tag until crates.io publishing is stable. The CLI install source does not automatically become the generated app dependency source; pass `--rwfw-git` and `--rwfw-tag` explicitly so the generated `Cargo.toml` is reproducible.
@@ -37,17 +37,17 @@ Environment variables are also supported for release scripts:
 
 ```bash
 RWFW_FRAMEWORK_GIT=https://github.com/<org>/rwfw \
-RWFW_FRAMEWORK_TAG=v0.1.0-alpha.2 \
+RWFW_FRAMEWORK_TAG=v0.1.0-alpha.3 \
 rwfw new app demo --example blog
 ```
 
 The generated dependencies use this shape:
 
 ```toml
-rwfw-core = { git = "https://github.com/<org>/rwfw", tag = "v0.1.0-alpha.2" }
-rwfw-shared = { git = "https://github.com/<org>/rwfw", tag = "v0.1.0-alpha.2" }
-rwfw-macros = { git = "https://github.com/<org>/rwfw", tag = "v0.1.0-alpha.2" }
-mod-auth = { git = "https://github.com/<org>/rwfw", tag = "v0.1.0-alpha.2" }
+rwfw-core = { git = "https://github.com/<org>/rwfw", tag = "v0.1.0-alpha.3" }
+rwfw-shared = { git = "https://github.com/<org>/rwfw", tag = "v0.1.0-alpha.3" }
+rwfw-macros = { git = "https://github.com/<org>/rwfw", tag = "v0.1.0-alpha.3" }
+mod-auth = { git = "https://github.com/<org>/rwfw", tag = "v0.1.0-alpha.3" }
 ```
 
 ## crates.io Path
@@ -77,6 +77,6 @@ For Git distribution, also generate one app with Git dependencies and inspect th
 ```bash
 rwfw new app git-smoke --example blog \
   --rwfw-git https://github.com/<org>/rwfw \
-  --rwfw-tag v0.1.0-alpha.2
+  --rwfw-tag v0.1.0-alpha.3
 grep -n "git = " git-smoke/Cargo.toml git-smoke/crates/app/Cargo.toml git-smoke/crates/modules/home/Cargo.toml
 ```

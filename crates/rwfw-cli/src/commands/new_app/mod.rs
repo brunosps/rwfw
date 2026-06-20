@@ -114,7 +114,10 @@ pub fn run(
     write_file(&app_dir.join("Dockerfile.prod"), dockerfile(&context))?;
     if matches!(context.database, DatabaseKind::Postgres) {
         write_file(&app_dir.join("compose.yaml"), compose_yaml(&context))?;
-        write_file(&app_dir.join("compose.dev.yaml"), compose_dev_yaml(&context))?;
+        write_file(
+            &app_dir.join("compose.dev.yaml"),
+            compose_dev_yaml(&context),
+        )?;
     }
     write_file(
         &app_dir.join(".rwfw/templates/model.rs.tera"),
@@ -228,8 +231,14 @@ pub fn run(
         &app_dir.join("crates/app/web/templates/components_catalog.html.j2"),
         COMPONENTS_CATALOG_TEMPLATE.to_string(),
     )?;
-    write_file(&app_dir.join("crates/app/web/vendor.lock"), VENDOR_LOCK.to_string())?;
-    write_file(&app_dir.join("crates/app/web/assets/app.css"), APP_CSS.to_string())?;
+    write_file(
+        &app_dir.join("crates/app/web/vendor.lock"),
+        VENDOR_LOCK.to_string(),
+    )?;
+    write_file(
+        &app_dir.join("crates/app/web/assets/app.css"),
+        APP_CSS.to_string(),
+    )?;
     write_file(
         &app_dir.join("crates/app/web/assets/dev-livereload.js"),
         DEV_LIVERELOAD_JS.to_string(),
@@ -619,7 +628,6 @@ fn path_for_yaml(path: &Path) -> String {
         .replace('"', "\\\"")
 }
 
-
 fn readme_md(context: &AppTemplateContext) -> String {
     let db_label = if matches!(context.database, DatabaseKind::Postgres) {
         "PostgreSQL"
@@ -785,6 +793,10 @@ rwfw seed admin --email admin@example.com --password rwfw-admin-123
 rwfw dev
 ```
 
+`rwfw dev` runs the app locally in Cargo's `dev` profile. Templates and CSS
+live reload in the browser; Rust code auto-restarts when `cargo-watch` is
+installed and falls back to plain `cargo run` otherwise.
+
 The dev database is exposed on `localhost:54329` by default:
 
 ```text
@@ -814,6 +826,10 @@ rwfw migrate
 rwfw seed admin --email admin@example.com --password rwfw-admin-123
 rwfw dev
 ```
+
+`rwfw dev` runs the app locally in Cargo's `dev` profile. Templates and CSS
+live reload in the browser; Rust code auto-restarts when `cargo-watch` is
+installed and falls back to plain `cargo run` otherwise.
 
 This app uses an embedded SQLite database at `data/{db}.db`, created on the first `rwfw migrate`. No external database service or Docker is required for local development."#,
             db = context.database_name
@@ -1001,7 +1017,10 @@ fn write_tauri_shell(app_dir: &Path, context: &AppTemplateContext) -> anyhow::Re
         tauri_cargo_toml(context),
     )?;
     write_file(&app_dir.join("src-tauri/build.rs"), tauri_build_rs())?;
-    write_file(&app_dir.join("src-tauri/src/main.rs"), tauri_main_rs(context))?;
+    write_file(
+        &app_dir.join("src-tauri/src/main.rs"),
+        tauri_main_rs(context),
+    )?;
     write_file(
         &app_dir.join("src-tauri/tauri.conf.json"),
         tauri_conf_json(context),
@@ -1279,8 +1298,16 @@ mod tests {
         assert!(mod_rs.contains("create_shop_tables.sqlite.sql"));
         let sql = shop_create_tables_sqlite_sql();
         assert_sqlite_dialect(&sql);
-        for table in ["shop_categories", "shop_products", "shop_orders", "shop_order_items"] {
-            assert!(sql.contains(table), "shop SQLite body missing table {table}");
+        for table in [
+            "shop_categories",
+            "shop_products",
+            "shop_orders",
+            "shop_order_items",
+        ] {
+            assert!(
+                sql.contains(table),
+                "shop SQLite body missing table {table}"
+            );
         }
     }
 
@@ -1299,7 +1326,10 @@ mod tests {
             shop_order_model_rs(),
             shop_order_item_model_rs(),
         ] {
-            assert!(!model.contains("schema_name"), "shop model must not be schema-qualified");
+            assert!(
+                !model.contains("schema_name"),
+                "shop model must not be schema-qualified"
+            );
         }
 
         let blog_pg = blog_create_posts_table_sql();

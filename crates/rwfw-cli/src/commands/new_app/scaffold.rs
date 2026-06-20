@@ -525,4 +525,3 @@ pub(super) fn scaffold_page_show_template() -> String {
 // Ecommerce example — Hotwire `View` routes (replace the Inertia handlers) and
 // `.html.j2` MiniJinja pages (replace the `.tsx` pages). All server-rendered.
 // ---------------------------------------------------------------------------
-

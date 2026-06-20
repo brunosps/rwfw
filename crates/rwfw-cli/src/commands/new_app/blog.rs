@@ -1,7 +1,10 @@
 //! File emitters for the generated app + blog example module.
 use super::*;
 
-pub(super) fn write_blog_example(app_dir: &Path, context: &AppTemplateContext) -> anyhow::Result<()> {
+pub(super) fn write_blog_example(
+    app_dir: &Path,
+    context: &AppTemplateContext,
+) -> anyhow::Result<()> {
     write_file(
         &app_dir.join("crates/modules/blog/Cargo.toml"),
         blog_cargo_toml(context),
@@ -19,8 +22,9 @@ pub(super) fn write_blog_example(app_dir: &Path, context: &AppTemplateContext) -
         blog_create_posts_table_sql(),
     )?;
     write_file(
-        &app_dir
-            .join("crates/modules/blog/src/migrations/20260101000000_create_posts_table.sqlite.sql"),
+        &app_dir.join(
+            "crates/modules/blog/src/migrations/20260101000000_create_posts_table.sqlite.sql",
+        ),
         blog_create_posts_table_sqlite_sql(),
     )?;
     write_file(
@@ -1444,7 +1448,6 @@ pub(super) fn blog_admin_post_edit_page_template() -> String {
     .to_string()
 }
 
-
 // ---------------------------------------------------------------------------
 // Ecommerce example (npm-free Hotwire): a `shop` module with products,
 // categories, a cookie-backed server-rendered cart, and a fake checkout that
@@ -1452,4 +1455,3 @@ pub(super) fn blog_admin_post_edit_page_template() -> String {
 // `.html.j2` templates extending `layouts/app.html.j2`, form-based mutations
 // with CSRF, and `data-turbo-method` links.
 // ---------------------------------------------------------------------------
-

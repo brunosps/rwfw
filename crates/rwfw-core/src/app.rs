@@ -1,9 +1,9 @@
 use crate::config::AppConfig;
 use crate::inertia::SharedData;
 use crate::module::{Module, NavItem};
+use crate::view::{TemplateRoot, ViewRenderer};
 use axum::Router;
 use axum::middleware;
-use crate::view::{TemplateRoot, ViewRenderer};
 use sea_orm::DatabaseConnection;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -100,6 +100,13 @@ impl RwfwApp {
         let mut watch_roots: Vec<PathBuf> = Vec::new();
         let mut router = Router::new();
 
+        // App-level templates are registered before module templates so a product
+        // can override framework/module defaults while still using their routes.
+        if let Some(app_web) = &self.app_web_root {
+            template_roots.push(TemplateRoot::app(app_web.join("templates")));
+            watch_roots.push(app_web.clone());
+        }
+
         for module in &self.modules {
             let name = module.name().to_string();
             let prefix = format!("/{}", name);
@@ -132,11 +139,6 @@ impl RwfwApp {
             }
         }
 
-        // App-level templates (layouts, shared partials) are the fallback root.
-        if let Some(app_web) = &self.app_web_root {
-            template_roots.push(TemplateRoot::app(app_web.join("templates")));
-            watch_roots.push(app_web.clone());
-        }
         let overlay_root = crate::view::exe_overlay_root();
         let view = ViewRenderer::layered(crate::view::Layers {
             overlay_root: overlay_root.clone(),
@@ -171,10 +173,7 @@ impl RwfwApp {
         router = router.route("/health", axum::routing::get(health_handler));
         router = router.route("/favicon.ico", axum::routing::get(favicon_handler));
         router = router.route("/components", axum::routing::get(components_catalog));
-        router = router.route(
-            "/__rwfw/livereload",
-            axum::routing::get(livereload_handler),
-        );
+        router = router.route("/__rwfw/livereload", axum::routing::get(livereload_handler));
 
         // Static assets, available to every app built via RwfwApp. `/assets`
         // resolves disk overlay -> app web root -> embed; `/vendor` is
@@ -251,10 +250,14 @@ async fn livereload_handler(
     }
 
     let stream = BroadcastStream::new(state.dev_reload.subscribe()).filter_map(|msg| match msg {
-        Ok(token) => Some(Ok::<_, std::convert::Infallible>(Event::default().data(token))),
+        Ok(token) => Some(Ok::<_, std::convert::Infallible>(
+            Event::default().data(token),
+        )),
         Err(_) => None,
     });
-    Sse::new(stream).keep_alive(KeepAlive::default()).into_response()
+    Sse::new(stream)
+        .keep_alive(KeepAlive::default())
+        .into_response()
 }
 
 async fn favicon_handler() -> axum::http::StatusCode {
@@ -316,8 +319,8 @@ fn bytes_response(
     bytes: std::borrow::Cow<'static, [u8]>,
     is_dev: bool,
 ) -> axum::response::Response {
-    use axum::http::{HeaderMap, HeaderValue};
     use axum::http::header::{CACHE_CONTROL, CONTENT_TYPE};
+    use axum::http::{HeaderMap, HeaderValue};
     use axum::response::IntoResponse;
     let mime = mime_guess::from_path(rel).first_or_octet_stream();
     let ctype = HeaderValue::from_str(mime.as_ref())

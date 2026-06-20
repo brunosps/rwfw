@@ -178,7 +178,8 @@ fn build_end_session_url(
     id_token: &str,
     post_logout_redirect: &str,
 ) -> anyhow::Result<String> {
-    let mut url = openidconnect::url::Url::parse(endpoint).context("invalid end_session_endpoint URL")?;
+    let mut url =
+        openidconnect::url::Url::parse(endpoint).context("invalid end_session_endpoint URL")?;
     url.query_pairs_mut()
         .append_pair("id_token_hint", id_token)
         .append_pair("post_logout_redirect_uri", post_logout_redirect)

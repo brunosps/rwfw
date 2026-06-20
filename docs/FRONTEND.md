@@ -1,8 +1,8 @@
 # Frontend Guide — Hotwire + MiniJinja (zero npm)
 
 RWFW renders HTML **on the server** with [MiniJinja](https://github.com/mitsuhiko/minijinja) templates and
-drives the browser with **Hotwire** (Turbo + Stimulus). There is no React, no Inertia, no Vite, no V8 SSR,
-and **no npm/Node** anywhere — `cargo` is the only toolchain. The view layer stays plain HTML, so anyone who
+drives the browser with **Hotwire** (Turbo + Stimulus). There is no React, no Inertia, no V8 SSR, and
+**no npm/Node** anywhere — `cargo` is the only toolchain. The view layer stays plain HTML, so anyone who
 knows HTML/CSS can work on it.
 
 > Why this stack? See the decision record in [FRONTEND_NPM_FREE.md](FRONTEND_NPM_FREE.md).
@@ -240,13 +240,14 @@ The base layout wires everything via a native **import map** — no bundler:
 All `cargo`, no npm:
 
 ```bash
-rwfw dev      # = cargo run -p <app>           (no Vite watcher)
+rwfw dev      # local Cargo dev build; Rust auto-restart if cargo-watch exists
 rwfw build    # = cargo build --release -p <app>
 rwfw migrate
 rwfw seed admin --email admin@example.com --password rwfw-admin-123
 ```
 
-The production image (`Dockerfile.prod`) is Rust-only and serves `web/` from disk.
+Templates/CSS live reload over RWFW's development SSE endpoint. The production
+image (`Dockerfile.prod`) is Rust-only and serves `web/` from disk.
 
 ---
 

@@ -54,7 +54,10 @@ async fn serves_compiled_css() {
         .and_then(|v| v.to_str().ok())
         .unwrap_or("")
         .to_string();
-    assert!(content_type.contains("css"), "unexpected content-type: {content_type}");
+    assert!(
+        content_type.contains("css"),
+        "unexpected content-type: {content_type}"
+    );
 }
 
 #[tokio::test]

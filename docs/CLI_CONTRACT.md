@@ -1,6 +1,6 @@
 # CLI Contract
 
-Version target: `0.1.0-alpha.2`.
+Version target: `0.1.0-alpha.3`.
 
 ## App Lifecycle
 
@@ -13,6 +13,11 @@ rwfw seed admin --email admin@example.com --password rwfw-admin-123
 rwfw auth sso add keycloak --provider keycloak --issuer-url http://localhost:8081/realms/rwfw --client-id-env KEYCLOAK_CLIENT_ID --client-secret-env KEYCLOAK_CLIENT_SECRET
 ```
 
+`rwfw dev` runs the generated app locally with `RWFW_ENV=development`. It uses
+`cargo-watch` for Rust auto-restart when available, falls back to `cargo run`
+when not installed, and relies on RWFW live reload for templates/CSS. It does
+not require npm, Node, or a JavaScript bundler.
+
 `rwfw new app` and `rwfw new example` support these app templates:
 
 - `--example blog`: editorial/blog CMS with public posts and protected admin post management.
@@ -21,8 +26,8 @@ rwfw auth sso add keycloak --provider keycloak --issuer-url http://localhost:808
 Dependency source flags are mutually exclusive:
 
 - `--rwfw-path /path/to/rwfw`: local framework checkout, preferred for framework development.
-- `--rwfw-git https://github.com/<org>/rwfw --rwfw-tag v0.1.0-alpha.2`: Git/tag distribution, preferred for external alpha use.
-- `--rwfw-version 0.1.0-alpha.2`: published crate version, for the future crates.io path.
+- `--rwfw-git https://github.com/<org>/rwfw --rwfw-tag v0.1.0-alpha.3`: Git/tag distribution, preferred for external alpha use.
+- `--rwfw-version 0.1.0-alpha.3`: published crate version, for the future crates.io path.
 
 ## Module and Scaffold
 

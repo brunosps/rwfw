@@ -9,11 +9,6 @@ logging:
   level: "info"
   format: "json"
 
-vite:
-  dev_server: null
-  manifest_path: "dist/client/.vite/manifest.json"
-  ssr_bundle_path: "dist/server/ssr.js"
-
 security:
   headers_enabled: true
   hsts: true

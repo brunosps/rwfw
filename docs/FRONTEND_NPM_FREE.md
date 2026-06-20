@@ -26,8 +26,8 @@ confiança. É essa árvore que queremos remover dos apps gerados.
 | Camada | Hoje | Pacotes npm |
 |---|---|---|
 | View | React 19 + `@inertiajs/react` (`.tsx`) | `react`, `react-dom`, `@inertiajs/react` |
-| SSR | Vite → `dist/server/ssr.js` rodado em V8 (`ssr_rs`) | bundle gerado por npm |
-| Build | Vite + TS + Tailwind/PostCSS | `vite`, `@vitejs/plugin-react`, `typescript`, `tailwindcss`, `postcss`, `autoprefixer` |
+| SSR | bundle JS rodado em V8 (`ssr_rs`) | bundle gerado por npm |
+| Build | TS + Tailwind/PostCSS + bundler JS | `typescript`, `tailwindcss`, `postcss`, `autoprefixer`, plugins do bundler |
 
 A troca é viável porque todo handler renderiza por **um único ponto**:
 `i.render_with_ssr("blog/Index", props_json)` (`crates/rwfw-core/src/inertia/extractor.rs:76`).
@@ -89,10 +89,10 @@ impl View {
 }
 ```
 
-### 4.2 `render_html_shell` — trocar Vite por import map (`crates/rwfw-core/src/inertia/response.rs:3`)
+### 4.2 `render_html_shell` — trocar bundle JS por import map (`crates/rwfw-core/src/inertia/response.rs:3`)
 
 ```rust
-// ANTES:  {vite_assets}  +  <div id="app" data-page="{json}">{ssr}</div>
+// ANTES:  {bundle_assets}  +  <div id="app" data-page="{json}">{ssr}</div>
 // DEPOIS:
 r#"<!DOCTYPE html>
 <html lang="pt-br">
@@ -126,7 +126,7 @@ r#"<!DOCTYPE html>
 - **Helper SSE** (`axum::response::Sse`) + `turbo_stream(...)` para tempo-real.
 - **CSRF** já existe (`crates/rwfw-core/src/csrf.rs`) — token via `<meta>`/hidden field.
 - **Some do binário:** o motor SSR V8 inteiro (`crates/rwfw-core/src/ssr/*` + dependência `ssr_rs`) e o
-  `crates/rwfw-core/src/vite.rs`. É menos código e dependência.
+  helper de assets do bundler. É menos código e dependência.
 
 ## 5. Antes e depois (no código real do RWFW)
 
@@ -337,7 +337,7 @@ Tudo Rust + HTML, zero npm.
 
 | Hoje gera (linhas em `new_app.rs`) | Vira |
 |---|---|
-| `package.json` (`:949`), `tsconfig.json` (`:982`), `vite.config.ts` (`:1014`), `tailwind.config.ts` (`:1248`), `postcss.config.js` | removidos (sem `package.json`) |
+| `package.json` (`:949`), `tsconfig.json` (`:982`), config do bundler JS, `tailwind.config.ts` (`:1248`), `postcss.config.js` | removidos (sem `package.json`) |
 | `app.tsx` (`:187`), `ssr.tsx` (`:188`), layouts/components `.tsx` | `layouts/app.html.j2`, `layouts/auth.html.j2`, parciais |
 | páginas `.tsx` dos módulos (`:211`, `:236`, `:1443`…) | `web/templates/*.html.j2` |
 | Dockerfile com `node:22` + `npm ci` + `npm run build` (`:546`,`:548`) | Dockerfile só-Rust + passo do Tailwind standalone |
@@ -350,7 +350,7 @@ Tudo Rust + HTML, zero npm.
 ANTES (gerado por rwfw new)            DEPOIS
 ├── package.json                       ├── (sem package.json)
 ├── tsconfig.json                      ├── (sem tsconfig)
-├── vite.config.ts                     ├── (sem vite)
+├── bundler.config.ts                  ├── (sem bundler JS)
 ├── tailwind.config.ts                 ├── tailwind.config.js  (lido pelo binário standalone)
 ├── crates/app/web/                    ├── crates/app/web/
 │   ├── app.tsx                        │   ├── templates/layouts/app.html.j2

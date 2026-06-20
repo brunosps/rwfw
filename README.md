@@ -1,6 +1,6 @@
 # RWFW
 
-RWFW is being shaped as a Rust web framework distributed primarily through a CLI. Current target: `0.1.0-alpha.2`.
+RWFW is being shaped as a Rust web framework distributed primarily through a CLI. Current target: `0.1.0-alpha.3`.
 
 The CLI generates a runnable starter application, while the framework crates provide the reusable runtime pieces: modules, routing, migrations, auth, server-side rendering with MiniJinja templates, Hotwire (Turbo + Stimulus), flash messages, and code generation conventions — with **zero npm/Node** in the frontend.
 
@@ -50,17 +50,21 @@ cargo run --manifest-path /home/bruno/code/rwfw/Cargo.toml -p rwfw-cli -- \
 cargo run --manifest-path /home/bruno/code/rwfw/Cargo.toml -p rwfw-cli -- dev
 ```
 
+`rwfw dev` runs the app locally in Cargo's `dev` profile. Templates and CSS
+live reload in the browser; Rust code auto-restarts when `cargo-watch` is
+installed and falls back to plain `cargo run` otherwise.
+
 ## Git Distribution Workflow
 
 Before crates.io publishing is stable, distribute RWFW from a Git tag:
 
 ```bash
-git tag v0.1.0-alpha.2
-git push origin v0.1.0-alpha.2
-cargo install --git https://github.com/<org>/rwfw --tag v0.1.0-alpha.2 rwfw-cli
+git tag v0.1.0-alpha.3
+git push origin v0.1.0-alpha.3
+cargo install --git https://github.com/<org>/rwfw --tag v0.1.0-alpha.3 rwfw-cli
 rwfw new app demo-app --example ecommerce \
   --rwfw-git https://github.com/<org>/rwfw \
-  --rwfw-tag v0.1.0-alpha.2
+  --rwfw-tag v0.1.0-alpha.3
 ```
 
 The generated app pins all RWFW framework dependencies to that Git tag. This makes the app reproducible even while the framework API is still moving.
@@ -107,5 +111,8 @@ Generated apps include `Dockerfile.prod` and `compose.yaml`. The production imag
 ```bash
 docker compose up --build
 ```
+
+Use the production image for release validation and deployment, not as the
+normal edit/run development loop.
 
 Set `RWFW_RUN_MIGRATIONS=0` if migrations should be handled by external deployment automation.

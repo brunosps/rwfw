@@ -1,7 +1,10 @@
 //! File emitters for the generated e-commerce (shop) example module.
 use super::*;
 
-pub(super) fn write_ecommerce_example(app_dir: &Path, context: &AppTemplateContext) -> anyhow::Result<()> {
+pub(super) fn write_ecommerce_example(
+    app_dir: &Path,
+    context: &AppTemplateContext,
+) -> anyhow::Result<()> {
     write_file(
         &app_dir.join("crates/modules/shop/Cargo.toml"),
         shop_cargo_toml(context),
@@ -23,8 +26,9 @@ pub(super) fn write_ecommerce_example(app_dir: &Path, context: &AppTemplateConte
         shop_create_tables_sql(),
     )?;
     write_file(
-        &app_dir
-            .join("crates/modules/shop/src/migrations/20260101000000_create_shop_tables.sqlite.sql"),
+        &app_dir.join(
+            "crates/modules/shop/src/migrations/20260101000000_create_shop_tables.sqlite.sql",
+        ),
         shop_create_tables_sqlite_sql(),
     )?;
     write_file(
@@ -2731,4 +2735,3 @@ pub(super) fn shop_admin_orders_show_template() -> String {
 "##
         .to_string()
 }
-

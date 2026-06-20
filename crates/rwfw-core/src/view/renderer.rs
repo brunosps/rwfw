@@ -184,7 +184,9 @@ impl ViewRenderer {
             .map(|(name, props)| {
                 let props: Vec<serde_json::Value> = props
                     .into_iter()
-                    .map(|(pname, default)| serde_json::json!({ "name": pname, "default": default }))
+                    .map(
+                        |(pname, default)| serde_json::json!({ "name": pname, "default": default }),
+                    )
                     .collect();
                 serde_json::json!({ "name": name, "props": props })
             })
@@ -351,6 +353,25 @@ mod tests {
     }
 
     #[test]
+    fn app_root_overrides_module_template_when_registered_first() {
+        let app_dir = temp_dir();
+        let auth_dir = temp_dir();
+        std::fs::create_dir_all(app_dir.join("auth")).unwrap();
+        std::fs::write(app_dir.join("auth/login.html.j2"), "APP").unwrap();
+        std::fs::write(auth_dir.join("login.html.j2"), "MODULE").unwrap();
+
+        let renderer = ViewRenderer::new(vec![
+            TemplateRoot::app(&app_dir),
+            TemplateRoot::module("auth", &auth_dir),
+        ]);
+        let html = renderer
+            .render_to_string("auth/login", minijinja::context! {})
+            .unwrap();
+
+        assert_eq!(html, "APP");
+    }
+
+    #[test]
     fn missing_template_is_an_error() {
         let dir = temp_dir();
         let renderer = ViewRenderer::new(vec![TemplateRoot::app(&dir)]);
@@ -376,7 +397,9 @@ mod tests {
         .unwrap();
 
         let renderer = ViewRenderer::new(vec![TemplateRoot::app(&dir)]);
-        let html = renderer.render_to_string("page", minijinja::context! {}).unwrap();
+        let html = renderer
+            .render_to_string("page", minijinja::context! {})
+            .unwrap();
 
         assert!(html.contains("class=\"btn btn-danger\""), "got: {html}");
         assert!(html.contains("id=\"go\""), "got: {html}");
@@ -400,11 +423,16 @@ mod tests {
         .unwrap();
 
         let renderer = ViewRenderer::new(vec![TemplateRoot::app(&dir)]);
-        let html = renderer.render_to_string("page", minijinja::context! {}).unwrap();
+        let html = renderer
+            .render_to_string("page", minijinja::context! {})
+            .unwrap();
 
         assert!(html.contains("<h2>Hello</h2>"), "got: {html}");
         assert!(html.contains("<p>Body</p>"), "got: {html}");
-        assert!(html.contains("<footer><a href=\"/x\">Foot</a></footer>"), "got: {html}");
+        assert!(
+            html.contains("<footer><a href=\"/x\">Foot</a></footer>"),
+            "got: {html}"
+        );
     }
 
     #[test]

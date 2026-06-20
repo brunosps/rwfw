@@ -12,7 +12,10 @@ use tower_http::set_header::SetResponseHeaderLayer;
 
 /// Apply the configured security-header layers to the router. A no-op when
 /// `headers_enabled` is false.
-pub fn apply_security_headers(mut router: Router<AppState>, config: &SecurityConfig) -> Router<AppState> {
+pub fn apply_security_headers(
+    mut router: Router<AppState>,
+    config: &SecurityConfig,
+) -> Router<AppState> {
     if !config.headers_enabled {
         return router;
     }

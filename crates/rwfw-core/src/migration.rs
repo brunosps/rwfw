@@ -4,8 +4,7 @@ use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement, V
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
-/// Migration ledger table. Table names are uniform across backends (no schemas)
-/// so the same name works on Postgres and SQLite.
+/// Migration ledger table. The logical name is uniform across backends.
 pub const MIGRATION_LEDGER_TABLE: &str = "rwfw_migrations";
 
 #[derive(Debug, Clone)]
@@ -166,9 +165,11 @@ pub async fn run_module_migrations(
 async fn ensure_ledger(db: &DatabaseConnection) -> anyhow::Result<()> {
     // Uniform, portable DDL: no schema, `applied_at` is TEXT filled from Rust at
     // insert time (see `record_applied`), so the same statement runs on both
-    // Postgres and SQLite.
+    // Postgres and SQLite. Postgres references are schema-qualified so module
+    // migrations that alter `search_path` cannot split the ledger.
+    let table = ledger_table(db.get_database_backend());
     db.execute_unprepared(&format!(
-        "CREATE TABLE IF NOT EXISTS {MIGRATION_LEDGER_TABLE} (
+        "CREATE TABLE IF NOT EXISTS {table} (
             module_name TEXT NOT NULL,
             version TEXT NOT NULL,
             name TEXT NOT NULL,
@@ -187,8 +188,9 @@ async fn applied_checksum(
     version: &str,
 ) -> anyhow::Result<Option<String>> {
     let backend = db.get_database_backend();
+    let table = ledger_table(backend);
     let sql = format!(
-        "SELECT checksum FROM {MIGRATION_LEDGER_TABLE} WHERE module_name = {} AND version = {}",
+        "SELECT checksum FROM {table} WHERE module_name = {} AND version = {}",
         crate::sql::placeholder(backend, 1),
         crate::sql::placeholder(backend, 2),
     );
@@ -210,9 +212,10 @@ async fn record_applied(
     checksum: &str,
 ) -> anyhow::Result<()> {
     let backend = db.get_database_backend();
+    let table = ledger_table(backend);
     let now = crate::sql::now_iso();
     let sql = format!(
-        "INSERT INTO {MIGRATION_LEDGER_TABLE} (module_name, version, name, checksum, applied_at) \
+        "INSERT INTO {table} (module_name, version, name, checksum, applied_at) \
          VALUES ({}, {}, {}, {}, '{}')",
         crate::sql::placeholder(backend, 1),
         crate::sql::placeholder(backend, 2),
@@ -232,4 +235,11 @@ async fn record_applied(
     ))
     .await?;
     Ok(())
+}
+
+fn ledger_table(backend: DatabaseBackend) -> &'static str {
+    match backend {
+        DatabaseBackend::Postgres => "public.rwfw_migrations",
+        _ => MIGRATION_LEDGER_TABLE,
+    }
 }

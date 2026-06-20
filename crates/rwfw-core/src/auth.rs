@@ -1,3 +1,4 @@
+use crate::sql::escape_sql;
 use argon2::{
     Argon2,
     password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString, rand_core::OsRng},
@@ -6,7 +7,6 @@ use axum::extract::{Request, State};
 use axum::http::request::Parts;
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Redirect, Response};
-use crate::sql::escape_sql;
 use sea_orm::{ConnectionTrait, DatabaseConnection, Statement, Value};
 use serde::Serialize;
 
@@ -711,7 +711,11 @@ async fn user_email_exists(db: &DatabaseConnection, email: &str) -> anyhow::Resu
 /// the raw-SQL call sites that interpolate dynamic values: callers build the SQL
 /// with `crate::sql::placeholder` and pass the values here (never string-format
 /// user input into the query).
-async fn exec_params(db: &DatabaseConnection, sql: String, values: Vec<Value>) -> anyhow::Result<()> {
+async fn exec_params(
+    db: &DatabaseConnection,
+    sql: String,
+    values: Vec<Value>,
+) -> anyhow::Result<()> {
     db.execute(Statement::from_sql_and_values(
         db.get_database_backend(),
         sql,
