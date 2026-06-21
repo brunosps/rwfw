@@ -10,7 +10,11 @@ macro_rules! app_or_skip {
         match TestApp::spawn().await {
             Some(app) => app,
             None => {
-                eprintln!(concat!("skipping ", $name, ": RWFW_TEST_DATABASE_URL not set"));
+                eprintln!(concat!(
+                    "skipping ",
+                    $name,
+                    ": RWFW_TEST_DATABASE_URL not set"
+                ));
                 return;
             }
         }
@@ -20,7 +24,11 @@ macro_rules! app_or_skip {
 #[tokio::test]
 async fn login_page_renders() {
     let app = app_or_skip!("login_page_renders");
-    let res = app.get("/auth/login").send().await.expect("GET /auth/login");
+    let res = app
+        .get("/auth/login")
+        .send()
+        .await
+        .expect("GET /auth/login");
     assert_eq!(res.status().as_u16(), 200);
     let body = res.text().await.unwrap();
     assert!(body.contains("Sign In"));
@@ -37,12 +45,18 @@ async fn login_succeeds_and_sets_session() {
     let res = app
         .post("/auth/login")
         .header("x-csrf-token", &token)
-        .form(&[("email", "login-ok@test.local"), ("password", "supersecret123")])
+        .form(&[
+            ("email", "login-ok@test.local"),
+            ("password", "supersecret123"),
+        ])
         .send()
         .await
         .expect("POST /auth/login");
     assert_eq!(res.status().as_u16(), 303);
-    assert_eq!(res.headers().get("location").unwrap().to_str().unwrap(), "/home");
+    assert_eq!(
+        res.headers().get("location").unwrap().to_str().unwrap(),
+        "/home"
+    );
 
     // Session cookie now lets us see the authenticated layout.
     let home = app.get("/home").send().await.expect("GET /home");
@@ -53,13 +67,17 @@ async fn login_succeeds_and_sets_session() {
 #[tokio::test]
 async fn login_invalid_credentials_re_renders_422() {
     let app = app_or_skip!("login_invalid_credentials_re_renders_422");
-    app.seed_user("login-bad@test.local", "supersecret123").await;
+    app.seed_user("login-bad@test.local", "supersecret123")
+        .await;
 
     let token = app.csrf_token("/auth/login").await;
     let res = app
         .post("/auth/login")
         .header("x-csrf-token", &token)
-        .form(&[("email", "login-bad@test.local"), ("password", "wrongpassword")])
+        .form(&[
+            ("email", "login-bad@test.local"),
+            ("password", "wrongpassword"),
+        ])
         .send()
         .await
         .expect("POST /auth/login");
@@ -92,7 +110,10 @@ async fn register_creates_user_and_logs_in() {
         .await
         .expect("POST /auth/register");
     assert_eq!(res.status().as_u16(), 303);
-    assert_eq!(res.headers().get("location").unwrap().to_str().unwrap(), "/home");
+    assert_eq!(
+        res.headers().get("location").unwrap().to_str().unwrap(),
+        "/home"
+    );
 }
 
 #[tokio::test]
@@ -135,5 +156,8 @@ async fn logout_clears_session() {
         .await
         .expect("POST /auth/logout");
     assert_eq!(res.status().as_u16(), 303);
-    assert_eq!(res.headers().get("location").unwrap().to_str().unwrap(), "/auth/login");
+    assert_eq!(
+        res.headers().get("location").unwrap().to_str().unwrap(),
+        "/auth/login"
+    );
 }

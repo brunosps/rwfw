@@ -12,7 +12,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Start development server (cargo watch + vite dev)
+    /// Start local development server (Rust app + template/CSS live reload)
     Dev,
     /// Build for production
     Build,

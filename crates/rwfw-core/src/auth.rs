@@ -1,3 +1,4 @@
+use crate::sql::escape_sql;
 use argon2::{
     Argon2,
     password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString, rand_core::OsRng},
@@ -6,7 +7,7 @@ use axum::extract::{Request, State};
 use axum::http::request::Parts;
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Redirect, Response};
-use sea_orm::{ConnectionTrait, DatabaseConnection, Statement};
+use sea_orm::{ConnectionTrait, DatabaseConnection, Statement, Value};
 use serde::Serialize;
 
 pub const SESSION_COOKIE: &str = "rwfw_session";
@@ -111,28 +112,83 @@ pub async fn create_session(
     db: &DatabaseConnection,
     user_id: uuid::Uuid,
     ttl_seconds: i64,
+    oidc_provider: Option<&str>,
+    id_token: Option<&str>,
 ) -> anyhow::Result<String> {
     let token = generate_session_token();
     let ttl_seconds = ttl_seconds.max(60);
     let expires_at = crate::sql::now_plus_seconds_iso(ttl_seconds);
-    let uid = crate::sql::uuid_literal(db.get_database_backend(), user_id);
+    let backend = db.get_database_backend();
+    // user_id/token/oidc_provider/id_token are bound; expires_at is a
+    // framework-generated ISO literal (binding a string into a Postgres
+    // `timestamptz` column would be rejected). The OIDC columns are NULL for
+    // password logins and carry the provider name + raw id_token for SSO logins.
     let sql = format!(
-        "INSERT INTO auth_sessions (user_id, token, expires_at) \
-         VALUES ({uid}, '{}', '{}')",
-        escape_sql(&token),
-        escape_sql(&expires_at)
+        "INSERT INTO auth_sessions (user_id, token, expires_at, oidc_provider, id_token) \
+         VALUES ({}, {}, '{}', {}, {})",
+        crate::sql::placeholder(backend, 1),
+        crate::sql::placeholder(backend, 2),
+        escape_sql(&expires_at),
+        crate::sql::placeholder(backend, 3),
+        crate::sql::placeholder(backend, 4),
     );
 
-    db.execute_unprepared(&sql).await?;
+    db.execute(Statement::from_sql_and_values(
+        backend,
+        sql,
+        [
+            user_id.into(),
+            token.clone().into(),
+            Value::String(oidc_provider.map(|s| Box::new(s.to_string()))),
+            Value::String(id_token.map(|s| Box::new(s.to_string()))),
+        ],
+    ))
+    .await?;
     Ok(token)
 }
 
-pub async fn delete_session(db: &DatabaseConnection, token: &str) -> anyhow::Result<()> {
+/// Read the OIDC provider name + raw id_token stored for a session. Both are
+/// present only for SSO logins; returns `None` for password sessions. Used to
+/// drive RP-initiated logout against the IdP.
+pub async fn session_oidc(
+    db: &DatabaseConnection,
+    token: &str,
+) -> anyhow::Result<Option<(String, String)>> {
+    let backend = db.get_database_backend();
     let sql = format!(
-        "DELETE FROM auth_sessions WHERE token = '{}'",
-        escape_sql(token)
+        "SELECT oidc_provider, id_token FROM auth_sessions WHERE token = {} LIMIT 1",
+        crate::sql::placeholder(backend, 1),
     );
-    db.execute_unprepared(&sql).await?;
+    let Some(row) = db
+        .query_one(Statement::from_sql_and_values(
+            backend,
+            sql,
+            [token.to_owned().into()],
+        ))
+        .await?
+    else {
+        return Ok(None);
+    };
+    let provider: Option<String> = row.try_get("", "oidc_provider")?;
+    let id_token: Option<String> = row.try_get("", "id_token")?;
+    Ok(match (provider, id_token) {
+        (Some(provider), Some(id_token)) => Some((provider, id_token)),
+        _ => None,
+    })
+}
+
+pub async fn delete_session(db: &DatabaseConnection, token: &str) -> anyhow::Result<()> {
+    let backend = db.get_database_backend();
+    let sql = format!(
+        "DELETE FROM auth_sessions WHERE token = {}",
+        crate::sql::placeholder(backend, 1)
+    );
+    db.execute(Statement::from_sql_and_values(
+        backend,
+        sql,
+        [token.to_owned().into()],
+    ))
+    .await?;
     Ok(())
 }
 
@@ -141,18 +197,25 @@ pub async fn find_current_user(
     token: &str,
 ) -> anyhow::Result<Option<CurrentUser>> {
     let now = crate::sql::now_iso();
+    let backend = db.get_database_backend();
+    // The session token comes from the request cookie (attacker-controlled), so
+    // it is bound as a parameter; `now` is a framework ISO literal.
     let sql = format!(
         "SELECT u.id, u.name, u.email \
          FROM auth_sessions s \
          JOIN auth_users u ON u.id = s.user_id \
-         WHERE s.token = '{}' AND s.expires_at > '{}' \
+         WHERE s.token = {} AND s.expires_at > '{}' \
          LIMIT 1",
-        escape_sql(token),
+        crate::sql::placeholder(backend, 1),
         escape_sql(&now)
     );
 
     let Some(row) = db
-        .query_one(Statement::from_string(db.get_database_backend(), sql))
+        .query_one(Statement::from_sql_and_values(
+            backend,
+            sql,
+            [token.to_owned().into()],
+        ))
         .await?
     else {
         return Ok(None);
@@ -176,21 +239,19 @@ pub async fn user_has_permission(
     user_id: uuid::Uuid,
     permission: &str,
 ) -> anyhow::Result<bool> {
-    let uid = crate::sql::uuid_literal(db.get_database_backend(), user_id);
+    let backend = db.get_database_backend();
     let sql = format!(
         "SELECT 1 \
          FROM auth_user_roles ur \
          JOIN auth_role_permissions rp ON rp.role_id = ur.role_id \
          JOIN auth_permissions p ON p.id = rp.permission_id \
-         WHERE ur.user_id = {uid} AND p.name = '{}' \
+         WHERE ur.user_id = {} AND p.name = {} \
          LIMIT 1",
-        escape_sql(permission)
+        crate::sql::placeholder(backend, 1),
+        crate::sql::placeholder(backend, 2),
     );
 
-    Ok(db
-        .query_one(Statement::from_string(db.get_database_backend(), sql))
-        .await?
-        .is_some())
+    exists(db, sql, vec![user_id.into(), permission.into()]).await
 }
 
 pub async fn ensure_permissions(
@@ -205,17 +266,18 @@ pub async fn ensure_permissions(
             permission.description.to_string()
         };
         let now = crate::sql::now_iso();
+        let backend = db.get_database_backend();
         let sql = format!(
             "INSERT INTO auth_permissions (name, description) \
-             VALUES ('{}', '{}') \
+             VALUES ({}, {}) \
              ON CONFLICT (name) DO UPDATE SET \
                  description = EXCLUDED.description, \
                  updated_at = '{}'",
-            escape_sql(permission.name),
-            escape_sql(&description),
+            crate::sql::placeholder(backend, 1),
+            crate::sql::placeholder(backend, 2),
             escape_sql(&now)
         );
-        db.execute_unprepared(&sql).await?;
+        exec_params(db, sql, vec![permission.name.into(), description.into()]).await?;
     }
 
     Ok(())
@@ -227,17 +289,18 @@ pub async fn ensure_role(
     description: &str,
 ) -> anyhow::Result<()> {
     let now = crate::sql::now_iso();
+    let backend = db.get_database_backend();
     let sql = format!(
         "INSERT INTO auth_roles (name, description) \
-         VALUES ('{}', '{}') \
+         VALUES ({}, {}) \
          ON CONFLICT (name) DO UPDATE SET \
              description = EXCLUDED.description, \
              updated_at = '{}'",
-        escape_sql(role),
-        escape_sql(description),
+        crate::sql::placeholder(backend, 1),
+        crate::sql::placeholder(backend, 2),
         escape_sql(&now)
     );
-    db.execute_unprepared(&sql).await?;
+    exec_params(db, sql, vec![role.into(), description.into()]).await?;
     Ok(())
 }
 
@@ -273,38 +336,55 @@ pub async fn ensure_admin_user(
     let now = crate::sql::now_iso();
     let backend = db.get_database_backend();
     let (user_id, created, password_updated) = if let Some(user_id) = existing {
-        let uid = crate::sql::uuid_literal(backend, user_id);
-        let sql = if input.update_password {
-            format!(
-                "UPDATE auth_users \
-                 SET name = '{}', password_hash = '{}', updated_at = '{}' \
-                 WHERE id = {uid}",
-                escape_sql(name),
-                escape_sql(&password_hash),
-                escape_sql(&now)
+        let (sql, values): (String, Vec<Value>) = if input.update_password {
+            (
+                format!(
+                    "UPDATE auth_users \
+                     SET name = {}, password_hash = {}, updated_at = '{}' \
+                     WHERE id = {}",
+                    crate::sql::placeholder(backend, 1),
+                    crate::sql::placeholder(backend, 2),
+                    escape_sql(&now),
+                    crate::sql::placeholder(backend, 3),
+                ),
+                vec![name.into(), password_hash.clone().into(), user_id.into()],
             )
         } else {
-            format!(
-                "UPDATE auth_users SET name = '{}', updated_at = '{}' WHERE id = {uid}",
-                escape_sql(name),
-                escape_sql(&now)
+            (
+                format!(
+                    "UPDATE auth_users SET name = {}, updated_at = '{}' WHERE id = {}",
+                    crate::sql::placeholder(backend, 1),
+                    escape_sql(&now),
+                    crate::sql::placeholder(backend, 2),
+                ),
+                vec![name.into(), user_id.into()],
             )
         };
-        db.execute_unprepared(&sql).await?;
+        exec_params(db, sql, values).await?;
         (user_id, false, input.update_password)
     } else {
         let user_id = uuid::Uuid::new_v4();
-        let uid = crate::sql::uuid_literal(backend, user_id);
         let sql = format!(
             "INSERT INTO auth_users (id, name, email, password_hash, created_at, updated_at) \
-             VALUES ({uid}, '{}', '{}', '{}', '{}', '{}')",
-            escape_sql(name),
-            escape_sql(email),
-            escape_sql(&password_hash),
+             VALUES ({}, {}, {}, {}, '{}', '{}')",
+            crate::sql::placeholder(backend, 1),
+            crate::sql::placeholder(backend, 2),
+            crate::sql::placeholder(backend, 3),
+            crate::sql::placeholder(backend, 4),
             escape_sql(&now),
-            escape_sql(&now)
+            escape_sql(&now),
         );
-        db.execute_unprepared(&sql).await?;
+        exec_params(
+            db,
+            sql,
+            vec![
+                user_id.into(),
+                name.into(),
+                email.into(),
+                password_hash.clone().into(),
+            ],
+        )
+        .await?;
         (user_id, true, true)
     };
 
@@ -368,17 +448,18 @@ pub async fn grant_permission_to_role(
         anyhow::bail!("Permission not found: {permission}");
     }
 
+    let backend = db.get_database_backend();
     let sql = format!(
         "INSERT INTO auth_role_permissions (role_id, permission_id) \
          SELECT r.id, p.id \
          FROM auth_roles r \
-         JOIN auth_permissions p ON p.name = '{}' \
-         WHERE r.name = '{}' \
+         JOIN auth_permissions p ON p.name = {} \
+         WHERE r.name = {} \
          ON CONFLICT DO NOTHING",
-        escape_sql(permission),
-        escape_sql(role)
+        crate::sql::placeholder(backend, 1),
+        crate::sql::placeholder(backend, 2),
     );
-    db.execute_unprepared(&sql).await?;
+    exec_params(db, sql, vec![permission.into(), role.into()]).await?;
     Ok(())
 }
 
@@ -387,14 +468,15 @@ pub async fn assign_role(
     user_id: uuid::Uuid,
     role: &str,
 ) -> anyhow::Result<()> {
-    let uid = crate::sql::uuid_literal(db.get_database_backend(), user_id);
+    let backend = db.get_database_backend();
     let sql = format!(
         "INSERT INTO auth_user_roles (user_id, role_id) \
-         SELECT {uid}, id FROM auth_roles WHERE name = '{}' \
+         SELECT {}, id FROM auth_roles WHERE name = {} \
          ON CONFLICT DO NOTHING",
-        escape_sql(role)
+        crate::sql::placeholder(backend, 1),
+        crate::sql::placeholder(backend, 2),
     );
-    db.execute_unprepared(&sql).await?;
+    exec_params(db, sql, vec![user_id.into(), role.into()]).await?;
     Ok(())
 }
 
@@ -410,17 +492,18 @@ pub async fn assign_role_by_email(
         anyhow::bail!("User not found: {email}");
     }
 
+    let backend = db.get_database_backend();
     let sql = format!(
         "INSERT INTO auth_user_roles (user_id, role_id) \
          SELECT u.id, r.id \
          FROM auth_users u \
-         JOIN auth_roles r ON r.name = '{}' \
-         WHERE u.email = '{}' \
+         JOIN auth_roles r ON r.name = {} \
+         WHERE u.email = {} \
          ON CONFLICT DO NOTHING",
-        escape_sql(role),
-        escape_sql(email)
+        crate::sql::placeholder(backend, 1),
+        crate::sql::placeholder(backend, 2),
     );
-    db.execute_unprepared(&sql).await?;
+    exec_params(db, sql, vec![role.into(), email.into()]).await?;
     Ok(())
 }
 
@@ -515,17 +598,22 @@ pub fn append_set_cookie(response: &mut axum::response::Response, cookie: String
 }
 
 async fn load_roles(db: &DatabaseConnection, user_id: uuid::Uuid) -> anyhow::Result<Vec<String>> {
-    let uid = crate::sql::uuid_literal(db.get_database_backend(), user_id);
+    let backend = db.get_database_backend();
     let sql = format!(
         "SELECT r.name \
          FROM auth_roles r \
          JOIN auth_user_roles ur ON ur.role_id = r.id \
-         WHERE ur.user_id = {uid} \
-         ORDER BY r.name"
+         WHERE ur.user_id = {} \
+         ORDER BY r.name",
+        crate::sql::placeholder(backend, 1),
     );
 
     let rows = db
-        .query_all(Statement::from_string(db.get_database_backend(), sql))
+        .query_all(Statement::from_sql_and_values(
+            backend,
+            sql,
+            vec![user_id.into()],
+        ))
         .await?;
 
     rows.into_iter()
@@ -534,14 +622,12 @@ async fn load_roles(db: &DatabaseConnection, user_id: uuid::Uuid) -> anyhow::Res
 }
 
 async fn role_exists(db: &DatabaseConnection, role: &str) -> anyhow::Result<bool> {
-    exists(
-        db,
-        &format!(
-            "SELECT 1 FROM auth_roles WHERE name = '{}' LIMIT 1",
-            escape_sql(role)
-        ),
-    )
-    .await
+    let backend = db.get_database_backend();
+    let sql = format!(
+        "SELECT 1 FROM auth_roles WHERE name = {} LIMIT 1",
+        crate::sql::placeholder(backend, 1),
+    );
+    exists(db, sql, vec![role.into()]).await
 }
 
 async fn user_has_role(
@@ -549,83 +635,103 @@ async fn user_has_role(
     user_id: uuid::Uuid,
     role: &str,
 ) -> anyhow::Result<bool> {
-    let uid = crate::sql::uuid_literal(db.get_database_backend(), user_id);
-    exists(
-        db,
-        &format!(
-            "SELECT 1 \
-             FROM auth_user_roles ur \
-             JOIN auth_roles r ON r.id = ur.role_id \
-             WHERE ur.user_id = {uid} AND r.name = '{}' \
-             LIMIT 1",
-            escape_sql(role)
-        ),
-    )
-    .await
+    let backend = db.get_database_backend();
+    let sql = format!(
+        "SELECT 1 \
+         FROM auth_user_roles ur \
+         JOIN auth_roles r ON r.id = ur.role_id \
+         WHERE ur.user_id = {} AND r.name = {} \
+         LIMIT 1",
+        crate::sql::placeholder(backend, 1),
+        crate::sql::placeholder(backend, 2),
+    );
+    exists(db, sql, vec![user_id.into(), role.into()]).await
 }
 
 async fn table_exists(db: &DatabaseConnection, schema: &str, table: &str) -> anyhow::Result<bool> {
     // Tables are uniformly named `<schema>_<table>` on both backends.
     let physical = format!("{schema}_{table}");
-    let sql = match db.get_database_backend() {
+    let backend = db.get_database_backend();
+    let sql = match backend {
         sea_orm::DatabaseBackend::Sqlite => format!(
             "SELECT 1 FROM sqlite_master \
-             WHERE type = 'table' AND name = '{}' \
+             WHERE type = 'table' AND name = {} \
              LIMIT 1",
-            escape_sql(&physical)
+            crate::sql::placeholder(backend, 1),
         ),
         _ => format!(
             "SELECT 1 FROM information_schema.tables \
-             WHERE table_name = '{}' \
+             WHERE table_name = {} \
              LIMIT 1",
-            escape_sql(&physical)
+            crate::sql::placeholder(backend, 1),
         ),
     };
-    exists(db, &sql).await
+    exists(db, sql, vec![physical.into()]).await
 }
 
 async fn permission_exists(db: &DatabaseConnection, permission: &str) -> anyhow::Result<bool> {
-    exists(
-        db,
-        &format!(
-            "SELECT 1 FROM auth_permissions WHERE name = '{}' LIMIT 1",
-            escape_sql(permission)
-        ),
-    )
-    .await
+    let backend = db.get_database_backend();
+    let sql = format!(
+        "SELECT 1 FROM auth_permissions WHERE name = {} LIMIT 1",
+        crate::sql::placeholder(backend, 1),
+    );
+    exists(db, sql, vec![permission.into()]).await
 }
 
 async fn find_user_id_by_email(
     db: &DatabaseConnection,
     email: &str,
 ) -> anyhow::Result<Option<uuid::Uuid>> {
+    let backend = db.get_database_backend();
     let sql = format!(
-        "SELECT id FROM auth_users WHERE email = '{}' LIMIT 1",
-        escape_sql(email)
+        "SELECT id FROM auth_users WHERE email = {} LIMIT 1",
+        crate::sql::placeholder(backend, 1),
     );
     let row = db
-        .query_one(Statement::from_string(db.get_database_backend(), sql))
+        .query_one(Statement::from_sql_and_values(
+            backend,
+            sql,
+            vec![email.into()],
+        ))
         .await?;
 
     Ok(row.map(|row| row.try_get("", "id")).transpose()?)
 }
 
 async fn user_email_exists(db: &DatabaseConnection, email: &str) -> anyhow::Result<bool> {
-    exists(
-        db,
-        &format!(
-            "SELECT 1 FROM auth_users WHERE email = '{}' LIMIT 1",
-            escape_sql(email)
-        ),
-    )
-    .await
+    let backend = db.get_database_backend();
+    let sql = format!(
+        "SELECT 1 FROM auth_users WHERE email = {} LIMIT 1",
+        crate::sql::placeholder(backend, 1),
+    );
+    exists(db, sql, vec![email.into()]).await
 }
 
-async fn exists(db: &DatabaseConnection, sql: &str) -> anyhow::Result<bool> {
+/// Run a parameterized non-query statement. The single audited binding path for
+/// the raw-SQL call sites that interpolate dynamic values: callers build the SQL
+/// with `crate::sql::placeholder` and pass the values here (never string-format
+/// user input into the query).
+async fn exec_params(
+    db: &DatabaseConnection,
+    sql: String,
+    values: Vec<Value>,
+) -> anyhow::Result<()> {
+    db.execute(Statement::from_sql_and_values(
+        db.get_database_backend(),
+        sql,
+        values,
+    ))
+    .await?;
+    Ok(())
+}
+
+/// Parameterized existence check (`SELECT 1 ... LIMIT 1`).
+async fn exists(db: &DatabaseConnection, sql: String, values: Vec<Value>) -> anyhow::Result<bool> {
     Ok(db
-        .query_one(Statement::from_string(
+        .query_one(Statement::from_sql_and_values(
             db.get_database_backend(),
-            sql.to_string(),
+            sql,
+            values,
         ))
         .await?
         .is_some())
@@ -656,18 +762,23 @@ async fn load_permissions(
     db: &DatabaseConnection,
     user_id: uuid::Uuid,
 ) -> anyhow::Result<Vec<String>> {
-    let uid = crate::sql::uuid_literal(db.get_database_backend(), user_id);
+    let backend = db.get_database_backend();
     let sql = format!(
         "SELECT DISTINCT p.name \
          FROM auth_permissions p \
          JOIN auth_role_permissions rp ON rp.permission_id = p.id \
          JOIN auth_user_roles ur ON ur.role_id = rp.role_id \
-         WHERE ur.user_id = {uid} \
-         ORDER BY p.name"
+         WHERE ur.user_id = {} \
+         ORDER BY p.name",
+        crate::sql::placeholder(backend, 1),
     );
 
     let rows = db
-        .query_all(Statement::from_string(db.get_database_backend(), sql))
+        .query_all(Statement::from_sql_and_values(
+            backend,
+            sql,
+            vec![user_id.into()],
+        ))
         .await?;
 
     rows.into_iter()
@@ -686,8 +797,4 @@ fn parse_cookie<'a>(cookie_header: &'a str, name: &str) -> Option<&'a str> {
         let (key, value) = cookie.trim().split_once('=')?;
         (key == name).then_some(value)
     })
-}
-
-fn escape_sql(value: &str) -> String {
-    value.replace('\'', "''")
 }

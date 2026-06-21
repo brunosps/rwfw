@@ -27,7 +27,8 @@ argon2 = { workspace = true }
 mime_guess = "2"
 minijinja = { version = "2", features = ["loader", "json", "loop_controls"] }
 minijinja-autoreload = "2"
-tokio-stream = "0.1"
+notify = "8"
+tokio-stream = { version = "0.1", features = ["sync"] }
 validator = { version = "0.20", features = ["derive"] }
 rwfw-shared = { path = "../rwfw-shared" }
 hyper = "1"

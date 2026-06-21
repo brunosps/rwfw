@@ -90,5 +90,9 @@ where
 
 /// Default entry point: boots `rwfw_app::build_router` on a loopback port.
 pub async fn serve_in_background(config: AppConfig) -> anyhow::Result<ServerHandle> {
-    serve_in_background_with(config, |cfg| async move { rwfw_app::build_router(cfg).await }).await
+    serve_in_background_with(
+        config,
+        |cfg| async move { rwfw_app::build_router(cfg).await },
+    )
+    .await
 }

@@ -31,7 +31,12 @@ impl RateLimiter {
     }
 
     pub fn check(&self, client_id: &str) -> bool {
-        let mut state = self.state.lock().unwrap();
+        // Recover from a poisoned lock instead of cascading panics: the guarded
+        // request-window map stays structurally valid after a handler panic.
+        let mut state = self.state.lock().unwrap_or_else(|poisoned| {
+            tracing::warn!("rate limiter mutex poisoned; recovering");
+            poisoned.into_inner()
+        });
         let now = Instant::now();
 
         let requests = state.clients.entry(client_id.to_string()).or_default();
@@ -57,13 +62,21 @@ pub fn rate_limit_middleware(
     move |request: Request, next: Next| {
         let limiter = limiter.clone();
         Box::pin(async move {
-            // Use client IP as identifier (from X-Forwarded-For or peer addr)
+            // Only throttle auth endpoints (login/register/sso); assets, SSE and
+            // app routes pass through untouched.
+            if !request.uri().path().starts_with("/auth/") {
+                return next.run(request).await;
+            }
+
+            // First hop of X-Forwarded-For is the client; fall back to "unknown"
+            // (fail-open per process) when no proxy sets the header.
             let client_id = request
                 .headers()
                 .get("x-forwarded-for")
                 .and_then(|v| v.to_str().ok())
-                .unwrap_or("unknown")
-                .to_string();
+                .and_then(|v| v.split(',').next())
+                .map(|ip| ip.trim().to_string())
+                .unwrap_or_else(|| "unknown".to_string());
 
             if !limiter.check(&client_id) {
                 return (

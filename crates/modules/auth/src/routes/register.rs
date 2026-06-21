@@ -1,21 +1,27 @@
 use crate::config::AuthConfig;
 use crate::repositories::user_repo::UserRepository;
 use crate::use_cases::register_user::{RegisterUserInput, RegisterUserUseCase};
-use axum::extract::{Form, State};
+use axum::extract::{Form, Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing;
 use rwfw_core::app::AppState;
 use rwfw_core::error::AppError;
 use rwfw_core::view::View;
+use std::collections::HashMap;
 
 pub fn route() -> axum::routing::MethodRouter<AppState> {
     routing::get(get).post(post)
 }
 
 /// GET /auth/register - Show registration page.
-async fn get(v: View) -> Response {
-    v.render("auth/register", serde_json::json!({}))
+async fn get(Query(query): Query<HashMap<String, String>>, v: View) -> Response {
+    let return_to = query.get("return_to").and_then(|value| safe_return_to(value));
+    let email = query.get("email").cloned().unwrap_or_default();
+    v.render(
+        "auth/register",
+        serde_json::json!({ "return_to": return_to, "old": { "email": email } }),
+    )
 }
 
 /// POST /auth/register - Process registration.
@@ -33,6 +39,8 @@ async fn post(
 
     let name = input.name.clone();
     let email = input.email.clone();
+    let return_to = input.return_to.as_deref().and_then(safe_return_to);
+    let target = return_to.as_deref().unwrap_or("/home").to_string();
 
     match use_case.execute(&repo, input).await {
         Ok(output) => {
@@ -45,9 +53,9 @@ async fn post(
             }
 
             let ttl = session_ttl(&state);
-            match rwfw_core::auth::create_session(&state.db, output.user.id, ttl).await {
+            match rwfw_core::auth::create_session(&state.db, output.user.id, ttl, None, None).await {
                 Ok(token) => {
-                    let mut response = Redirect::to("/home").into_response();
+                    let mut response = Redirect::to(&target).into_response();
                     rwfw_core::auth::append_set_cookie(
                         &mut response,
                         rwfw_core::auth::session_cookie(&token, ttl, !state.config.is_development()),
@@ -62,7 +70,8 @@ async fn post(
             "auth/register",
             serde_json::json!({
                 "errors": rwfw_core::validation::first_messages(errors),
-                "old": { "name": name, "email": email }
+                "old": { "name": name, "email": email },
+                "return_to": return_to
             }),
         ),
         Err(error) => error.into_response(),
@@ -71,4 +80,13 @@ async fn post(
 
 fn session_ttl(state: &AppState) -> i64 {
     AuthConfig::from_state(state).session_ttl
+}
+
+fn safe_return_to(value: &str) -> Option<String> {
+    let value = value.trim();
+    if value.starts_with('/') && !value.starts_with("//") && !value.contains("://") {
+        Some(value.to_string())
+    } else {
+        None
+    }
 }

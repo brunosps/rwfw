@@ -9,10 +9,14 @@ logging:
   level: "info"
   format: "json"
 
-vite:
-  dev_server: null
-  manifest_path: "dist/client/.vite/manifest.json"
-  ssr_bundle_path: "dist/server/ssr.js"
+security:
+  headers_enabled: true
+  hsts: true
+  frame_options: "SAMEORIGIN"
+  rate_limit:
+    enabled: false
+    max_requests: 10
+    window_secs: 60
 
 auth:
   session_ttl: 86400

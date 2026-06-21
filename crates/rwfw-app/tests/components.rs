@@ -11,7 +11,11 @@ async fn components_catalog_lists_components() {
         return;
     };
 
-    let res = app.get("/components").send().await.expect("GET /components");
+    let res = app
+        .get("/components")
+        .send()
+        .await
+        .expect("GET /components");
     assert_eq!(res.status().as_u16(), 200);
 
     let body = res.text().await.unwrap();

@@ -105,14 +105,22 @@ fn discover_routes(routes_path: &Path) -> Vec<RouteEntry> {
             continue;
         }
 
-        // Skip mod.rs files — they're only for module organization
-        let file_stem = path.file_stem().unwrap().to_str().unwrap();
+        // Skip mod.rs files — they're only for module organization. Route files
+        // are ASCII by convention; skip (rather than panic the build on) any path
+        // that isn't valid UTF-8.
+        let Some(file_stem) = path.file_stem().and_then(|s| s.to_str()) else {
+            continue;
+        };
         if file_stem == "mod" {
             continue;
         }
 
-        let relative = path.strip_prefix(routes_path).unwrap();
-        let relative_str = relative.to_str().unwrap().to_string();
+        let Ok(relative) = path.strip_prefix(routes_path) else {
+            continue;
+        };
+        let Some(relative_str) = relative.to_str().map(str::to_string) else {
+            continue;
+        };
 
         // Build URL path segments from the directory components
         let mut url_segments: Vec<String> = Vec::new();
@@ -121,7 +129,9 @@ fn discover_routes(routes_path: &Path) -> Vec<RouteEntry> {
         // Process directory components
         if let Some(parent) = relative.parent() {
             for component in parent.components() {
-                let s = component.as_os_str().to_str().unwrap();
+                let Some(s) = component.as_os_str().to_str() else {
+                    continue;
+                };
                 url_segments.push(segment_to_axum(s));
                 name_parts.push(segment_to_ident(s));
             }

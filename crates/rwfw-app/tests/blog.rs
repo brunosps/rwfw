@@ -11,7 +11,11 @@ macro_rules! app_or_skip {
         match TestApp::spawn().await {
             Some(app) => app,
             None => {
-                eprintln!(concat!("skipping ", $name, ": RWFW_TEST_DATABASE_URL not set"));
+                eprintln!(concat!(
+                    "skipping ",
+                    $name,
+                    ": RWFW_TEST_DATABASE_URL not set"
+                ));
                 return;
             }
         }
@@ -32,7 +36,11 @@ async fn blog_redirects_to_posts() {
 #[tokio::test]
 async fn post_list_is_public() {
     let app = app_or_skip!("post_list_is_public");
-    let res = app.get("/blog/posts").send().await.expect("GET /blog/posts");
+    let res = app
+        .get("/blog/posts")
+        .send()
+        .await
+        .expect("GET /blog/posts");
     assert_eq!(res.status().as_u16(), 200);
     let body = res.text().await.unwrap();
     assert!(body.contains("Posts"));
@@ -92,7 +100,10 @@ async fn create_post_validation_re_renders_422() {
 
     assert_eq!(res.status().as_u16(), 422);
     let body = res.text().await.unwrap();
-    assert!(body.contains("at least 10 characters"), "missing body error");
+    assert!(
+        body.contains("at least 10 characters"),
+        "missing body error"
+    );
     assert!(body.contains("Kept Title"), "old title not repopulated");
 }
 
@@ -114,14 +125,20 @@ async fn sse_stream_broadcasts_new_post() {
         .and_then(|v| v.to_str().ok())
         .unwrap_or("")
         .to_string();
-    assert!(content_type.contains("text/event-stream"), "ct: {content_type}");
+    assert!(
+        content_type.contains("text/event-stream"),
+        "ct: {content_type}"
+    );
 
     // Create a post; it should be broadcast to the open stream.
     let token = app.csrf_token("/blog/posts/create").await;
     let created = app
         .post("/blog/posts")
         .header("x-csrf-token", &token)
-        .form(&[("title", "Live Post"), ("body", "Streamed in real time over SSE.")])
+        .form(&[
+            ("title", "Live Post"),
+            ("body", "Streamed in real time over SSE."),
+        ])
         .send()
         .await
         .expect("create");
@@ -140,7 +157,10 @@ async fn sse_stream_broadcasts_new_post() {
     })
     .await;
 
-    assert!(outcome.is_ok(), "timed out waiting for SSE; received: {received:?}");
+    assert!(
+        outcome.is_ok(),
+        "timed out waiting for SSE; received: {received:?}"
+    );
     assert!(received.contains("turbo-stream"), "received: {received:?}");
     assert!(received.contains("Live Post"), "received: {received:?}");
 }

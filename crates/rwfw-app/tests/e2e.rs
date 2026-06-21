@@ -84,7 +84,9 @@ async fn turbo_drive_navigates_without_full_reload() {
             .unwrap_or_default();
         if path == "/blog/posts" {
             let body = page.content().await.unwrap_or_default();
-            if body.contains("New Post") || body.contains("No posts yet") || body.contains("Sign in")
+            if body.contains("New Post")
+                || body.contains("No posts yet")
+                || body.contains("Sign in")
             {
                 navigated = true;
                 break;

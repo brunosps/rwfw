@@ -67,7 +67,10 @@ impl SearchOperator {
                 if matches!(backend, Postgres) {
                     (format!("{column} NOT ILIKE '%' || {pi} || '%'"), true)
                 } else {
-                    (format!("{column} NOT LIKE '%' || {pi} || '%'{nocase}"), true)
+                    (
+                        format!("{column} NOT LIKE '%' || {pi} || '%'{nocase}"),
+                        true,
+                    )
                 }
             }
             SearchOperator::Like => (format!("{column} LIKE {pi}"), true),

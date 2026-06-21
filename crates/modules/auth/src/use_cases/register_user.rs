@@ -12,6 +12,7 @@ pub struct RegisterUserInput {
     #[validate(length(min = 8, message = "Password must be at least 8 characters"))]
     pub password: String,
     pub password_confirmation: String,
+    pub return_to: Option<String>,
 }
 
 pub struct RegisterUserOutput {

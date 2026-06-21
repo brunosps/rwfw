@@ -37,6 +37,11 @@ pub async fn authorization_url(
         .set_pkce_challenge(pkce_challenge);
 
     for scope in effective_scopes(provider) {
+        // The authorization-code flow already requests `openid`; adding it again
+        // would emit a duplicate `scope=openid openid`.
+        if scope == "openid" {
+            continue;
+        }
         request = request.add_scope(Scope::new(scope));
     }
 
@@ -57,7 +62,7 @@ pub async fn exchange_code(
     code: &str,
     nonce: &str,
     pkce_verifier: &str,
-) -> anyhow::Result<ExternalIdentity> {
+) -> anyhow::Result<(ExternalIdentity, String)> {
     let (client_id, client_secret) = client_credentials(provider)?;
     let client = CoreClient::from_provider_metadata(
         provider_metadata(provider).await?,
@@ -77,6 +82,8 @@ pub async fn exchange_code(
     let id_token = token_response
         .id_token()
         .ok_or_else(|| anyhow::anyhow!("OIDC provider did not return an id_token"))?;
+    // Raw compact JWT, kept so logout can send it back as `id_token_hint`.
+    let id_token_raw = id_token.to_string();
     let id_token_verifier = client.id_token_verifier();
     let nonce = Nonce::new(nonce.to_string());
     let claims = id_token
@@ -112,15 +119,92 @@ pub async fn exchange_code(
         .unwrap_or_else(|| email.clone());
     let claims = serde_json::to_value(claims).context("failed to serialize OIDC claims")?;
 
-    Ok(ExternalIdentity {
-        provider: provider_name.to_string(),
-        issuer: provider.issuer_url.clone(),
-        subject,
-        email,
-        email_verified,
-        name,
-        claims,
-    })
+    Ok((
+        ExternalIdentity {
+            provider: provider_name.to_string(),
+            issuer: provider.issuer_url.clone(),
+            subject,
+            email,
+            email_verified,
+            name,
+            claims,
+        },
+        id_token_raw,
+    ))
+}
+
+/// Build the RP-initiated logout URL (OpenID Connect Session Management
+/// `end_session_endpoint`) so logging out of the app also terminates the IdP
+/// session. Returns `None` if the provider's discovery document has no
+/// `end_session_endpoint`. Sends `id_token_hint` (so the IdP knows which session
+/// to end), `post_logout_redirect_uri`, and `client_id`.
+pub async fn end_session_url(
+    provider: &OidcProviderConfig,
+    id_token: &str,
+    post_logout_redirect: &str,
+) -> anyhow::Result<Option<String>> {
+    let discovery_url = format!(
+        "{}/.well-known/openid-configuration",
+        provider.issuer_url.trim_end_matches('/')
+    );
+    let http_client = http_client()?;
+    let doc: serde_json::Value = http_client
+        .get(&discovery_url)
+        .send()
+        .await
+        .context("failed to fetch OIDC discovery document")?
+        .json()
+        .await
+        .context("failed to parse OIDC discovery document")?;
+
+    let Some(endpoint) = doc.get("end_session_endpoint").and_then(|v| v.as_str()) else {
+        return Ok(None);
+    };
+
+    let (client_id, _) = client_credentials(provider)?;
+    Ok(Some(build_end_session_url(
+        endpoint,
+        &client_id,
+        id_token,
+        post_logout_redirect,
+    )?))
+}
+
+/// Build the RP-initiated logout URL (pure; no network) from a discovered
+/// `end_session_endpoint` plus the hint/redirect/client params.
+fn build_end_session_url(
+    endpoint: &str,
+    client_id: &str,
+    id_token: &str,
+    post_logout_redirect: &str,
+) -> anyhow::Result<String> {
+    let mut url =
+        openidconnect::url::Url::parse(endpoint).context("invalid end_session_endpoint URL")?;
+    url.query_pairs_mut()
+        .append_pair("id_token_hint", id_token)
+        .append_pair("post_logout_redirect_uri", post_logout_redirect)
+        .append_pair("client_id", client_id);
+    Ok(url.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::build_end_session_url;
+
+    #[test]
+    fn end_session_url_carries_hint_redirect_and_client() {
+        let url = build_end_session_url(
+            "https://idp.example/realms/x/protocol/openid-connect/logout",
+            "my-client",
+            "the.id.token",
+            "https://app.example/auth/login",
+        )
+        .unwrap();
+        assert!(url.starts_with("https://idp.example/realms/x/protocol/openid-connect/logout?"));
+        assert!(url.contains("id_token_hint=the.id.token"));
+        assert!(url.contains("client_id=my-client"));
+        assert!(url.contains("post_logout_redirect_uri=https%3A%2F%2Fapp.example%2Fauth%2Flogin"));
+    }
 }
 
 fn client_credentials(provider: &OidcProviderConfig) -> anyhow::Result<(String, String)> {

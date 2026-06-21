@@ -6,8 +6,9 @@
 //! value back as the `X-CSRF-Token` header on form submissions; the middleware
 //! verifies that header against the cookie for mutating, form-encoded requests.
 //!
-//! JSON requests (the legacy Inertia/React path) and `/api/*` + SSO callbacks
-//! are exempt, so React forms keep working until they are migrated away.
+//! JSON bodies, `/api/*`, and SSO callbacks are exempt (they rely on
+//! SameSite cookies, not a double-submit token); browser-driven form posts are
+//! always verified.
 
 use axum::extract::Request;
 use axum::http::header::{CONTENT_TYPE, COOKIE, SET_COOKIE};
@@ -81,12 +82,25 @@ pub async fn csrf_middleware(mut request: Request, next: Next) -> Response {
 
     let mut response = next.run(request).await;
     if fresh {
-        let cookie = format!("{CSRF_COOKIE}={token}; Path=/; SameSite=Lax; HttpOnly");
+        // `Secure` outside development so the token cookie is HTTPS-only.
+        // `SameSite=Lax` (not Strict) is required so the cookie survives the
+        // top-level redirect back from an SSO provider.
+        let secure = if is_secure_env() { "; Secure" } else { "" };
+        let cookie = format!("{CSRF_COOKIE}={token}; Path=/; SameSite=Lax; HttpOnly{secure}");
         if let Ok(value) = cookie.parse() {
             response.headers_mut().append(SET_COOKIE, value);
         }
     }
     response
+}
+
+/// True when running outside the `development` environment (mirrors
+/// `AppConfig::is_development`), so cookies can be marked `Secure`. Read from the
+/// env directly because the CSRF layer has no `AppState` handle.
+fn is_secure_env() -> bool {
+    std::env::var("RWFW_ENV")
+        .map(|env| env != "development")
+        .unwrap_or(false)
 }
 
 fn is_static(path: &str) -> bool {
@@ -98,13 +112,9 @@ fn is_static(path: &str) -> bool {
 
 /// Verification applies to browser-driven mutations (HTML form posts and
 /// Turbo `data-turbo-method` PUT/PATCH/DELETE, which send `X-CSRF-Token`).
-/// Exempt: JSON bodies and `X-Inertia` requests (the legacy React/Inertia
-/// path), `/api/*`, and SSO callbacks.
+/// Exempt: JSON bodies, `/api/*`, and SSO callbacks.
 fn requires_csrf(path: &str, headers: &HeaderMap) -> bool {
     if path.starts_with("/api/") || path.contains("/sso/") {
-        return false;
-    }
-    if headers.contains_key("x-inertia") {
         return false;
     }
     let is_json = headers

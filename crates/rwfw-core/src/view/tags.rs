@@ -79,7 +79,8 @@ impl ComponentRegistry {
                 }
                 if let Some(bytes) = embed.get(&key) {
                     if let Ok(src) = std::str::from_utf8(&bytes) {
-                        defs.entry(name.to_string()).or_insert_with(|| parse_def(src));
+                        defs.entry(name.to_string())
+                            .or_insert_with(|| parse_def(src));
                     }
                 }
             }

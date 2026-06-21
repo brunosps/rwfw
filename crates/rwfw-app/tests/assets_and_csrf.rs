@@ -54,7 +54,10 @@ async fn serves_compiled_css() {
         .and_then(|v| v.to_str().ok())
         .unwrap_or("")
         .to_string();
-    assert!(content_type.contains("css"), "unexpected content-type: {content_type}");
+    assert!(
+        content_type.contains("css"),
+        "unexpected content-type: {content_type}"
+    );
 }
 
 #[tokio::test]
@@ -74,4 +77,35 @@ async fn rejects_form_post_without_csrf_token() {
         .await
         .expect("POST /blog/posts");
     assert_eq!(res.status().as_u16(), 403);
+}
+
+#[tokio::test]
+async fn emits_security_headers() {
+    let Some(app) = TestApp::spawn().await else {
+        eprintln!("skipping emits_security_headers: RWFW_TEST_DATABASE_URL not set");
+        return;
+    };
+
+    // Default SecurityConfig (test harness has no `security:` section) enables
+    // response headers; they apply to every route, including /health.
+    let res = app.get("/health").send().await.expect("GET /health");
+    let header = |name: &str| {
+        res.headers()
+            .get(name)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("")
+            .to_string()
+    };
+    assert_eq!(header("x-content-type-options"), "nosniff");
+    assert_eq!(header("x-frame-options"), "SAMEORIGIN");
+    assert!(
+        header("content-security-policy").contains("default-src 'self'"),
+        "missing/unexpected CSP: {}",
+        header("content-security-policy")
+    );
+    // HSTS is off by default (no TLS assumption in dev/tests).
+    assert!(
+        res.headers().get("strict-transport-security").is_none(),
+        "HSTS should be off by default"
+    );
 }

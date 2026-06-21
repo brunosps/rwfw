@@ -3,6 +3,7 @@
 {% block content %}
 <form method="post" action="/auth/login" class="space-y-6 rounded-xl border border-slate-200 bg-white p-8 shadow-sm">
   <input type="hidden" name="_csrf" value="{{ csrf_token }}">
+  {% if return_to %}<input type="hidden" name="return_to" value="{{ return_to }}">{% endif %}
 
   <div class="space-y-1 text-center">
     <h2 class="font-serif text-3xl font-semibold text-slate-900">Sign In</h2>
@@ -39,7 +40,7 @@
           class="w-full rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-900/30 disabled:opacity-50">Sign In</button>
 
   <p class="text-center text-sm text-slate-600">
-    Don't have an account? <a href="/auth/register" class="font-medium text-slate-900 underline-offset-4 hover:underline">Register</a>
+    Don't have an account? <a href="/auth/register{% if return_to %}?return_to={{ return_to }}{% endif %}" class="font-medium text-slate-900 underline-offset-4 hover:underline">Register</a>
   </p>
 </form>
 {% endblock %}

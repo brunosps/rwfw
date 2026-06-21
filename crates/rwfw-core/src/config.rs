@@ -19,6 +19,62 @@ pub struct LoggingConfig {
     pub format: String,
 }
 
+/// Opt-in web security knobs (response headers + auth rate limiting), read from
+/// the `security:` config section. Every field has a safe default so apps that
+/// omit the section still get sensible protection (headers on, HSTS/rate-limit
+/// off — both are deployment-specific).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct SecurityConfig {
+    /// Emit X-Content-Type-Options / X-Frame-Options / Referrer-Policy / CSP.
+    pub headers_enabled: bool,
+    /// Emit Strict-Transport-Security (only safe behind TLS; default off).
+    pub hsts: bool,
+    /// Content-Security-Policy value; `None` skips the header.
+    pub content_security_policy: Option<String>,
+    /// X-Frame-Options value.
+    pub frame_options: String,
+    pub rate_limit: RateLimitConfig,
+}
+
+impl Default for SecurityConfig {
+    fn default() -> Self {
+        Self {
+            headers_enabled: true,
+            hsts: false,
+            content_security_policy: Some(
+                "default-src 'self'; script-src 'self' 'unsafe-inline'; \
+                 style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; \
+                 font-src 'self' data:; object-src 'none'; base-uri 'self'; \
+                 frame-ancestors 'self'"
+                    .to_string(),
+            ),
+            frame_options: "SAMEORIGIN".to_string(),
+            rate_limit: RateLimitConfig::default(),
+        }
+    }
+}
+
+/// In-memory rate limiting for auth routes. Disabled by default (in-memory state
+/// does not survive restarts or scale across processes — opt in per deployment).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct RateLimitConfig {
+    pub enabled: bool,
+    pub max_requests: u32,
+    pub window_secs: u64,
+}
+
+impl Default for RateLimitConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            max_requests: 10,
+            window_secs: 60,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct AppConfig {
     inner: Config,
@@ -61,6 +117,14 @@ impl AppConfig {
 
     pub fn module_config<T: DeserializeOwned>(&self, module: &str) -> anyhow::Result<T> {
         Ok(self.inner.get::<T>(module)?)
+    }
+
+    /// Security knobs from the `security:` section, falling back to defaults
+    /// (headers on, HSTS/rate-limit off) when the section is absent or partial.
+    pub fn security(&self) -> SecurityConfig {
+        self.inner
+            .get::<SecurityConfig>("security")
+            .unwrap_or_default()
     }
 
     pub fn is_development(&self) -> bool {
