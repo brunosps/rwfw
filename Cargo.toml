@@ -38,3 +38,6 @@ thiserror = "2"
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1", features = ["v4", "serde"] }
 argon2 = "0.5"
+base64 = "0.22"
+hmac = "0.12"
+sha2 = "0.10"

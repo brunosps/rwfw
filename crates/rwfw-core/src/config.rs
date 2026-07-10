@@ -1,6 +1,7 @@
 use config::{Config, File};
 use serde::Deserialize;
 use serde::de::DeserializeOwned;
+use sha2::{Digest, Sha256};
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct ServerConfig {
@@ -129,6 +130,44 @@ impl AppConfig {
 
     pub fn is_development(&self) -> bool {
         std::env::var("RWFW_ENV").unwrap_or_else(|_| "development".into()) == "development"
+    }
+
+    pub fn is_test(&self) -> bool {
+        std::env::var("RWFW_ENV").unwrap_or_else(|_| "development".into()) == "test"
+            || cfg!(test)
+    }
+
+    /// Secret key used to sign stateless reactive component tokens.
+    ///
+    /// In development and tests, a missing `RWFW_SECRET_KEY` derives a stable
+    /// per-project key so local counters work out of the box. In production,
+    /// callers pass `required = true` only when a reactive component is
+    /// registered, preserving boot behavior for apps that never opt in.
+    pub fn reactive_secret_key(&self, required: bool) -> anyhow::Result<Option<Vec<u8>>> {
+        if let Ok(secret) = self.inner.get::<String>("secret_key") {
+            if !secret.is_empty() {
+                return Ok(Some(secret.into_bytes()));
+            }
+        }
+
+        if self.is_development() || self.is_test() {
+            let root = std::env::current_dir()
+                .map(|path| path.display().to_string())
+                .unwrap_or_else(|_| "rwfw-development".to_string());
+            tracing::warn!(
+                "RWFW_SECRET_KEY is unset; deriving a development reactive token key from the project path"
+            );
+            let digest = Sha256::digest(format!("rwfw-reactive:{root}").as_bytes());
+            return Ok(Some(digest.to_vec()));
+        }
+
+        if required {
+            anyhow::bail!(
+                "RWFW_SECRET_KEY must be set when reactive components are registered in production"
+            );
+        }
+
+        Ok(None)
     }
 
     /// Build a minimal configuration for tests, overriding only the database URL.
