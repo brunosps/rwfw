@@ -143,10 +143,10 @@ impl AppConfig {
     /// callers pass `required = true` only when a reactive component is
     /// registered, preserving boot behavior for apps that never opt in.
     pub fn reactive_secret_key(&self, required: bool) -> anyhow::Result<Option<Vec<u8>>> {
-        if let Ok(secret) = self.inner.get::<String>("secret_key") {
-            if !secret.is_empty() {
-                return Ok(Some(secret.into_bytes()));
-            }
+        if let Ok(secret) = self.inner.get::<String>("secret_key")
+            && !secret.is_empty()
+        {
+            return Ok(Some(secret.into_bytes()));
         }
 
         if self.is_development() || self.is_test() {

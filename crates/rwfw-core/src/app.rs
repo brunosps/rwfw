@@ -281,17 +281,16 @@ async fn vendor_handler(
     axum::extract::Path(path): axum::extract::Path<String>,
 ) -> axum::response::Response {
     use axum::response::IntoResponse;
-    if let Some(root) = &state.app_web_root {
-        if let Some(fp) = crate::view::safe_join(&root.join("vendor"), &path) {
-            if let Ok(bytes) = std::fs::read(&fp) {
-                return bytes_response(&path, bytes.into(), state.config.is_development());
-            }
-        }
+    if let Some(root) = &state.app_web_root
+        && let Some(fp) = crate::view::safe_join(&root.join("vendor"), &path)
+        && let Ok(bytes) = std::fs::read(&fp)
+    {
+        return bytes_response(&path, bytes.into(), state.config.is_development());
     }
-    if let Some(embed) = &state.asset_embed {
-        if let Some(bytes) = embed.vendor(&path) {
-            return bytes_response(&path, bytes, state.config.is_development());
-        }
+    if let Some(embed) = &state.asset_embed
+        && let Some(bytes) = embed.vendor(&path)
+    {
+        return bytes_response(&path, bytes, state.config.is_development());
     }
     axum::http::StatusCode::NOT_FOUND.into_response()
 }
@@ -302,24 +301,22 @@ async fn asset_handler(
     axum::extract::Path(path): axum::extract::Path<String>,
 ) -> axum::response::Response {
     use axum::response::IntoResponse;
-    if let Some(overlay) = &state.overlay_root {
-        if let Some(fp) = crate::view::safe_join(&overlay.join("assets"), &path) {
-            if let Ok(bytes) = std::fs::read(&fp) {
-                return bytes_response(&path, bytes.into(), state.config.is_development());
-            }
-        }
+    if let Some(overlay) = &state.overlay_root
+        && let Some(fp) = crate::view::safe_join(&overlay.join("assets"), &path)
+        && let Ok(bytes) = std::fs::read(&fp)
+    {
+        return bytes_response(&path, bytes.into(), state.config.is_development());
     }
-    if let Some(root) = &state.app_web_root {
-        if let Some(fp) = crate::view::safe_join(&root.join("assets"), &path) {
-            if let Ok(bytes) = std::fs::read(&fp) {
-                return bytes_response(&path, bytes.into(), state.config.is_development());
-            }
-        }
+    if let Some(root) = &state.app_web_root
+        && let Some(fp) = crate::view::safe_join(&root.join("assets"), &path)
+        && let Ok(bytes) = std::fs::read(&fp)
+    {
+        return bytes_response(&path, bytes.into(), state.config.is_development());
     }
-    if let Some(embed) = &state.asset_embed {
-        if let Some(bytes) = embed.asset(&path) {
-            return bytes_response(&path, bytes, state.config.is_development());
-        }
+    if let Some(embed) = &state.asset_embed
+        && let Some(bytes) = embed.asset(&path)
+    {
+        return bytes_response(&path, bytes, state.config.is_development());
     }
     axum::http::StatusCode::NOT_FOUND.into_response()
 }

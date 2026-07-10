@@ -68,10 +68,10 @@ fn reactive_actions_inner(mut input: ItemImpl) -> syn::Result<proc_macro2::Token
     let mut actions = Vec::new();
 
     for item in &mut input.items {
-        if let ImplItem::Fn(method) = item {
-            if take_action_attr(&mut method.attrs) {
-                actions.push(action_tokens(type_ident, method)?);
-            }
+        if let ImplItem::Fn(method) = item
+            && take_action_attr(&mut method.attrs)
+        {
+            actions.push(action_tokens(type_ident, method)?);
         }
     }
 
@@ -220,10 +220,10 @@ fn take_action_attr(attrs: &mut Vec<Attribute>) -> bool {
 }
 
 fn type_ident(ty: &Type) -> syn::Result<&syn::Ident> {
-    if let Type::Path(path) = ty {
-        if let Some(segment) = path.path.segments.last() {
-            return Ok(&segment.ident);
-        }
+    if let Type::Path(path) = ty
+        && let Some(segment) = path.path.segments.last()
+    {
+        return Ok(&segment.ident);
     }
     Err(syn::Error::new_spanned(
         ty,
