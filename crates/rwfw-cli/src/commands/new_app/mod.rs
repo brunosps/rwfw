@@ -243,6 +243,12 @@ pub fn run(
         &app_dir.join("crates/app/web/assets/dev-livereload.js"),
         DEV_LIVERELOAD_JS.to_string(),
     )?;
+    // The base layout's import map points at /assets/reactive.js; without the
+    // file the whole Stimulus boot module would fail in generated apps.
+    write_file(
+        &app_dir.join("crates/app/web/assets/reactive.js"),
+        REACTIVE_JS.to_string(),
+    )?;
     write_binary_file(
         &app_dir.join("crates/app/web/vendor/turbo.min.js"),
         TURBO_JS,
@@ -587,6 +593,7 @@ const STIMULUS_JS: &[u8] = include_bytes!("../../../../rwfw-app/web/vendor/stimu
 const VENDOR_LOCK: &str = include_str!("../../../../rwfw-app/web/vendor.lock");
 const APP_CSS: &str = include_str!("../../../../rwfw-app/web/assets/app.css");
 const DEV_LIVERELOAD_JS: &str = include_str!("../../../../rwfw-app/web/assets/dev-livereload.js");
+const REACTIVE_JS: &str = include_str!("../../../../rwfw-app/web/assets/reactive.js");
 const BASE_LAYOUT_TEMPLATE: &str =
     include_str!("../../../../rwfw-app/web/templates/layouts/base.html.j2");
 const APP_LAYOUT_TEMPLATE: &str =
@@ -1247,6 +1254,25 @@ fn to_title(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn generated_layout_ships_the_reactive_runtime_it_imports() {
+        // The base layout's import map maps `rwfw-reactive` to /assets/reactive.js
+        // and the boot module imports it eagerly — if the scaffold ever stops
+        // writing the asset, every generated app loses Stimulus entirely.
+        assert!(
+            BASE_LAYOUT_TEMPLATE.contains(r#""rwfw-reactive": "/assets/reactive.js""#),
+            "base layout must map the reactive runtime in the import map"
+        );
+        assert!(
+            BASE_LAYOUT_TEMPLATE.contains(r#"register("reactive""#),
+            "base layout must register the reactive Stimulus controller"
+        );
+        assert!(
+            REACTIVE_JS.contains("Controller"),
+            "embedded reactive.js must be the Stimulus controller source"
+        );
+    }
 
     /// Postgres-only tokens that must never appear in a SQLite migration body —
     /// these are exactly what broke `rwfw new app --database sqlite` before the

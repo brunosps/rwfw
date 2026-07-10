@@ -1,0 +1,13 @@
+[package]
+name = "mod-demo"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+rwfw-core = { path = "../../rwfw-core" }
+rwfw-macros = { path = "../../rwfw-macros" }
+axum = { workspace = true }
+async-trait = { workspace = true }
+inventory = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }

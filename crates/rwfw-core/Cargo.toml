@@ -24,6 +24,9 @@ thiserror = { workspace = true }
 chrono = { workspace = true }
 uuid = { workspace = true }
 argon2 = { workspace = true }
+base64 = { workspace = true }
+hmac = { workspace = true }
+sha2 = { workspace = true }
 mime_guess = "2"
 minijinja = { version = "2", features = ["loader", "json", "loop_controls"] }
 minijinja-autoreload = "2"

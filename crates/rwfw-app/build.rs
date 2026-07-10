@@ -19,7 +19,7 @@ fn main() {
     // Module templates -> "<module>/" prefix. Keep in sync with workspace
     // members / the `extern crate` list in src/lib.rs.
     let modules_dir = manifest.join("..").join("modules");
-    for m in ["home", "auth", "blog"] {
+    for m in ["home", "auth", "blog", "demo"] {
         let src = modules_dir.join(m).join("web").join("templates");
         if src.is_dir() {
             copy_tree(&src, &tdst.join(m));

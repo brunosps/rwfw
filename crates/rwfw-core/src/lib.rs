@@ -14,6 +14,7 @@ pub mod module;
 pub mod pagination;
 pub mod query;
 pub mod rate_limit;
+pub mod reactive;
 pub mod repository;
 pub mod security;
 pub mod sql;

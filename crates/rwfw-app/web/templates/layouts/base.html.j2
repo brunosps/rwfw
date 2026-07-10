@@ -10,14 +10,17 @@
   {
     "imports": {
       "@hotwired/turbo": "/vendor/turbo.min.js",
-      "@hotwired/stimulus": "/vendor/stimulus.min.js"
+      "@hotwired/stimulus": "/vendor/stimulus.min.js",
+      "rwfw-reactive": "/assets/reactive.js"
     }
   }
   </script>
   <script type="module">
     import "@hotwired/turbo"
     import { Application } from "@hotwired/stimulus"
+    import ReactiveController from "rwfw-reactive"
     window.Stimulus = Application.start()
+    window.Stimulus.register("reactive", ReactiveController)
   </script>
   {% if is_development %}<script src="/assets/dev-livereload.js" defer></script>{% endif %}
 </head>

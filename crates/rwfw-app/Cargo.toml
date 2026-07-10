@@ -13,6 +13,7 @@ rwfw-shared = { path = "../rwfw-shared" }
 mod-home = { path = "../modules/home" }
 mod-auth = { path = "../modules/auth" }
 mod-blog = { path = "../modules/blog" }
+mod-demo = { path = "../modules/demo" }
 tokio = { workspace = true }
 tracing = { workspace = true }
 inventory = { workspace = true }
