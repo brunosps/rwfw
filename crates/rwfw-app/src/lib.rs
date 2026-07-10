@@ -6,6 +6,7 @@ use rwfw_core::module::{Module, ModuleRegistration};
 // Force linker to include module crates so inventory can discover them.
 extern crate mod_auth;
 extern crate mod_blog;
+extern crate mod_demo;
 extern crate mod_home;
 
 mod embed;

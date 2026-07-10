@@ -1,0 +1,11 @@
+<div class="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+  <div class="flex items-center justify-between gap-4">
+    <button type="button" class="rounded-md border border-slate-300 px-3 py-2 text-lg font-semibold hover:bg-slate-50" {{ on("decrement") }}>-</button>
+    <output data-testid="count" class="min-w-16 text-center text-3xl font-semibold text-slate-950">{{ count }}</output>
+    <button type="button" class="rounded-md border border-slate-300 px-3 py-2 text-lg font-semibold hover:bg-slate-50" {{ on("increment") }}>+</button>
+  </div>
+  <form class="mt-4 flex gap-2">
+    <input name="value" type="number" value="{{ count }}" class="min-w-0 flex-1 rounded-md border border-slate-300 px-3 py-2">
+    <button type="submit" class="rounded-md bg-slate-950 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800" {{ on("set", event="submit") }}>Set</button>
+  </form>
+</div>

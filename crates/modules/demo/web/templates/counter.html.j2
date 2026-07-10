@@ -1,0 +1,13 @@
+{% extends "layouts/app.html.j2" %}
+
+{% block title %}Reactive Counter{% endblock %}
+
+{% block content %}
+<section class="mx-auto flex max-w-xl flex-col gap-6 px-4 py-12">
+  <div>
+    <h1 class="text-2xl font-semibold text-slate-950">Reactive Counter</h1>
+    <p class="mt-2 text-sm text-slate-600">Server-rendered state, patched by Turbo Streams.</p>
+  </div>
+  {{ counter|safe }}
+</section>
+{% endblock %}
