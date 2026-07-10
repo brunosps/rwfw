@@ -112,7 +112,8 @@ mod tests {
 
     #[test]
     fn renders_replace_with_morph_method() {
-        let stream = TurboStream::new(TurboAction::Replace, "counter", "<div></div>").method("morph");
+        let stream =
+            TurboStream::new(TurboAction::Replace, "counter", "<div></div>").method("morph");
         assert_eq!(
             stream.render(),
             r#"<turbo-stream action="replace" target="counter" method="morph"><template><div></div></template></turbo-stream>"#

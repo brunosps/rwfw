@@ -140,7 +140,9 @@ async fn reactive_counter_updates_without_reload_and_rejects_tampering() {
     let handler_task = tokio::spawn(async move { while handler.next().await.is_some() {} });
 
     let page = browser.new_page("about:blank").await.expect("new page");
-    page.goto(app.url("/demo/counter")).await.expect("goto counter");
+    page.goto(app.url("/demo/counter"))
+        .await
+        .expect("goto counter");
     page.wait_for_navigation().await.expect("counter loaded");
 
     page.evaluate("window.__rwfw_marker = 'kept'")

@@ -19,7 +19,7 @@ pub mod registry;
 mod render;
 pub mod token;
 
-pub use registry::{RegisteredOutput, ReactiveRegistration, find, has_registered_components};
+pub use registry::{ReactiveRegistration, RegisteredOutput, find, has_registered_components};
 pub(crate) use render::{render_component, render_registered_output};
 
 /// Request context passed to reactive actions.
@@ -80,7 +80,10 @@ pub enum ReactiveError {
     #[error("{0}")]
     Invalid(String),
     #[error("unknown action")]
-    UnknownAction { action: String, allowed: &'static [&'static str] },
+    UnknownAction {
+        action: String,
+        allowed: &'static [&'static str],
+    },
     #[error("internal reactive component error")]
     Internal,
 }

@@ -59,7 +59,11 @@ fn reactive_context(context: Value) -> Value {
     ])
 }
 
-fn on_helper(action: String, params: Option<Value>, kwargs: Kwargs) -> Result<Value, minijinja::Error> {
+fn on_helper(
+    action: String,
+    params: Option<Value>,
+    kwargs: Kwargs,
+) -> Result<Value, minijinja::Error> {
     let event: Option<String> = kwargs.get("event")?;
     kwargs.assert_all_used()?;
 

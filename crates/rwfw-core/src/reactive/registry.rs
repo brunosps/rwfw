@@ -48,7 +48,10 @@ pub fn find(name: &str) -> Option<&'static ReactiveRegistration> {
 
 /// True when any component registered with inventory.
 pub fn has_registered_components() -> bool {
-    inventory::iter::<ReactiveRegistration>.into_iter().next().is_some()
+    inventory::iter::<ReactiveRegistration>
+        .into_iter()
+        .next()
+        .is_some()
 }
 
 fn dispatch_registered<T>(
@@ -63,8 +66,7 @@ where
     let mut component: T =
         serde_json::from_value(state).map_err(|error| ReactiveError::Invalid(error.to_string()))?;
     let reply = component.dispatch(action, params, ctx)?;
-    let state =
-        serde_json::to_value(&component).map_err(|_| ReactiveError::Internal)?;
+    let state = serde_json::to_value(&component).map_err(|_| ReactiveError::Internal)?;
     Ok(RegisteredOutput {
         reply,
         component: T::NAME,

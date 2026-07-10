@@ -39,7 +39,13 @@ async fn reactive_counter_roundtrip_and_error_contracts() {
     let unknown = post_action(&app, &token, "missing", serde_json::json!({})).await;
     assert_eq!(unknown.status, reqwest::StatusCode::FORBIDDEN);
 
-    let tampered = post_action(&app, &format!("{token}x"), "increment", serde_json::json!({})).await;
+    let tampered = post_action(
+        &app,
+        &format!("{token}x"),
+        "increment",
+        serde_json::json!({}),
+    )
+    .await;
     assert_eq!(tampered.status, reqwest::StatusCode::BAD_REQUEST);
 }
 

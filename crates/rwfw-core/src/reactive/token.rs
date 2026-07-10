@@ -61,8 +61,7 @@ pub fn sign(payload: &Payload, key: &[u8]) -> Result<String, TokenError> {
 
 /// Verify a signed token and return its decoded payload.
 pub fn verify(token: &str, key: &[u8]) -> Result<Payload, TokenError> {
-    let (payload_part, signature_part) =
-        token.split_once('.').ok_or(TokenError::Malformed)?;
+    let (payload_part, signature_part) = token.split_once('.').ok_or(TokenError::Malformed)?;
     if payload_part.contains('.') || signature_part.contains('.') || signature_part.is_empty() {
         return Err(TokenError::Malformed);
     }

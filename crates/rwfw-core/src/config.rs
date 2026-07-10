@@ -133,8 +133,7 @@ impl AppConfig {
     }
 
     pub fn is_test(&self) -> bool {
-        std::env::var("RWFW_ENV").unwrap_or_else(|_| "development".into()) == "test"
-            || cfg!(test)
+        std::env::var("RWFW_ENV").unwrap_or_else(|_| "development".into()) == "test" || cfg!(test)
     }
 
     /// Secret key used to sign stateless reactive component tokens.

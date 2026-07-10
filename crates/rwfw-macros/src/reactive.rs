@@ -40,9 +40,8 @@ fn derive_reactive_component_inner(input: DeriveInput) -> syn::Result<proc_macro
         }
     }
 
-    let name = name.ok_or_else(|| {
-        syn::Error::new_spanned(&ident, "missing #[reactive(name = \"...\")]")
-    })?;
+    let name =
+        name.ok_or_else(|| syn::Error::new_spanned(&ident, "missing #[reactive(name = \"...\")]"))?;
     let template = template.ok_or_else(|| {
         syn::Error::new_spanned(&ident, "missing #[reactive(template = \"...\")]")
     })?;
@@ -140,11 +139,7 @@ fn action_tokens(type_ident: &syn::Ident, method: &ImplItemFn) -> syn::Result<Ac
     let struct_ident = format_ident!("__Rwfw{}{}Params", type_ident, to_pascal(&name));
 
     let (param_struct, parse_params, call_args) = if params.is_empty() {
-        (
-            quote! {},
-            quote! {},
-            quote! {},
-        )
+        (quote! {}, quote! {}, quote! {})
     } else {
         let fields = params.iter().map(|param| {
             let ident = &param.ident;
@@ -196,7 +191,10 @@ fn action_params(method: &ImplItemFn) -> syn::Result<Vec<ActionParam<'_>>> {
         FnArg::Typed(pat_type) => Some(pat_type),
     });
     let _ctx = typed.next().ok_or_else(|| {
-        syn::Error::new_spanned(&method.sig.ident, "reactive actions must accept a Ctx argument")
+        syn::Error::new_spanned(
+            &method.sig.ident,
+            "reactive actions must accept a Ctx argument",
+        )
     })?;
 
     typed

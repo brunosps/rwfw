@@ -64,10 +64,7 @@ async fn handle_action(
     }
 }
 
-async fn current_user(
-    state: &AppState,
-    headers: &HeaderMap,
-) -> Option<crate::auth::CurrentUser> {
+async fn current_user(state: &AppState, headers: &HeaderMap) -> Option<crate::auth::CurrentUser> {
     let token = crate::auth::extract_session_token(headers)?;
     match crate::auth::find_current_user(&state.db, &token).await {
         Ok(user) => user,
