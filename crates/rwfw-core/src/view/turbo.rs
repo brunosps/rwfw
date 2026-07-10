@@ -36,6 +36,7 @@ pub struct TurboStream {
     action: TurboAction,
     target: String,
     html: String,
+    method: Option<String>,
 }
 
 impl TurboStream {
@@ -44,7 +45,13 @@ impl TurboStream {
             action,
             target: target.into(),
             html: html.into(),
+            method: None,
         }
+    }
+
+    pub fn method(mut self, method: impl Into<String>) -> Self {
+        self.method = Some(method.into());
+        self
     }
 
     pub fn render(&self) -> String {
@@ -54,10 +61,16 @@ impl TurboStream {
                 self.target
             )
         } else {
+            let method = self
+                .method
+                .as_deref()
+                .map(|method| format!(r#" method="{method}""#))
+                .unwrap_or_default();
             format!(
-                r#"<turbo-stream action="{}" target="{}"><template>{}</template></turbo-stream>"#,
+                r#"<turbo-stream action="{}" target="{}"{}><template>{}</template></turbo-stream>"#,
                 self.action.as_str(),
                 self.target,
+                method,
                 self.html
             )
         }
@@ -94,6 +107,15 @@ mod tests {
         assert_eq!(
             stream.render(),
             r#"<turbo-stream action="remove" target="post_1"></turbo-stream>"#
+        );
+    }
+
+    #[test]
+    fn renders_replace_with_morph_method() {
+        let stream = TurboStream::new(TurboAction::Replace, "counter", "<div></div>").method("morph");
+        assert_eq!(
+            stream.render(),
+            r#"<turbo-stream action="replace" target="counter" method="morph"><template><div></div></template></turbo-stream>"#
         );
     }
 }

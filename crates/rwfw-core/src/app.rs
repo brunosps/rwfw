@@ -25,6 +25,8 @@ pub struct AppState {
     pub app_web_root: Option<PathBuf>,
     /// Embedded static assets (vendor + assets); packaged fallback.
     pub asset_embed: Option<crate::view::AssetEmbed>,
+    /// HMAC key for stateless reactive component tokens.
+    pub reactive_secret_key: Option<Vec<u8>>,
     modules_nav: Arc<Vec<ModuleNav>>,
 }
 
@@ -94,6 +96,9 @@ impl RwfwApp {
     pub async fn build(self) -> anyhow::Result<Router> {
         let db = crate::db::connect(&self.config).await?;
         let security = self.config.security();
+        let reactive_secret_key = self
+            .config
+            .reactive_secret_key(crate::reactive::has_registered_components())?;
 
         let mut modules_nav = Vec::new();
         let mut template_roots: Vec<TemplateRoot> = Vec::new();
@@ -160,6 +165,7 @@ impl RwfwApp {
             overlay_root,
             app_web_root: self.app_web_root.clone(),
             asset_embed: self.asset_embed.clone(),
+            reactive_secret_key,
             modules_nav: Arc::new(modules_nav),
         };
 
@@ -174,6 +180,10 @@ impl RwfwApp {
         router = router.route("/favicon.ico", axum::routing::get(favicon_handler));
         router = router.route("/components", axum::routing::get(components_catalog));
         router = router.route("/__rwfw/livereload", axum::routing::get(livereload_handler));
+        router = router.route(
+            "/__rwfw/reactive/actions",
+            axum::routing::post(crate::reactive::endpoint::actions),
+        );
 
         // Static assets, available to every app built via RwfwApp. `/assets`
         // resolves disk overlay -> app web root -> embed; `/vendor` is
