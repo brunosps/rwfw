@@ -9,6 +9,11 @@ use serde::de::DeserializeOwned;
 use crate::app::AppState;
 use crate::auth::CurrentUser;
 
+#[doc(hidden)]
+pub use minijinja;
+#[doc(hidden)]
+pub use serde_json;
+
 pub mod registry;
 pub mod token;
 
@@ -36,6 +41,29 @@ impl Default for Reply {
 impl From<()> for Reply {
     fn from(_: ()) -> Self {
         Self::default()
+    }
+}
+
+/// Normalizes action return values accepted by `#[reactive_actions]`.
+pub trait IntoReactiveReply {
+    fn into_reactive_reply(self) -> Result<Reply, ReactiveError>;
+}
+
+impl IntoReactiveReply for () {
+    fn into_reactive_reply(self) -> Result<Reply, ReactiveError> {
+        Ok(Reply::default())
+    }
+}
+
+impl IntoReactiveReply for Reply {
+    fn into_reactive_reply(self) -> Result<Reply, ReactiveError> {
+        Ok(self)
+    }
+}
+
+impl IntoReactiveReply for Result<Reply, ReactiveError> {
+    fn into_reactive_reply(self) -> Result<Reply, ReactiveError> {
+        self
     }
 }
 
