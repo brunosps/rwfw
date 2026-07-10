@@ -1,8 +1,27 @@
 use minijinja::value::{Kwargs, Value, merge_maps};
 
 use super::token::Payload;
-use super::{ReactiveError, RegisteredOutput};
+use super::{ReactiveComponent, ReactiveError, RegisteredOutput};
 use crate::view::ViewRenderer;
+
+pub(crate) fn render_component<C>(
+    component: &C,
+    renderer: &ViewRenderer,
+    key: &[u8],
+) -> Result<String, ReactiveError>
+where
+    C: ReactiveComponent,
+{
+    let output = RegisteredOutput {
+        reply: super::Reply::default(),
+        component: C::NAME,
+        template: component.template(),
+        dom_id: component.dom_id(),
+        state: serde_json::to_value(component).map_err(|_| ReactiveError::Internal)?,
+        context: component.context(),
+    };
+    render_registered_output(&output, renderer, key)
+}
 
 pub(crate) fn render_registered_output(
     output: &RegisteredOutput,

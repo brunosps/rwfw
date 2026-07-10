@@ -20,7 +20,7 @@ mod render;
 pub mod token;
 
 pub use registry::{RegisteredOutput, ReactiveRegistration, find, has_registered_components};
-pub(crate) use render::render_registered_output;
+pub(crate) use render::{render_component, render_registered_output};
 
 /// Request context passed to reactive actions.
 pub struct Ctx<'a> {

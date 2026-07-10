@@ -19,6 +19,7 @@ use crate::inertia::shared::InertiaSharedProps;
 pub struct View {
     renderer: ViewRenderer,
     shared: Value,
+    reactive_secret_key: Option<Vec<u8>>,
     pub url: String,
     pub is_turbo_stream: bool,
     pub headers: HeaderMap,
@@ -63,6 +64,31 @@ impl View {
                 tracing::error!(template = %template, error = %error, "view fragment render failed");
                 String::new()
             })
+    }
+
+    /// Render a stateless reactive component and return its signed root HTML.
+    ///
+    /// Handlers pass the returned string into a normal page render and mark it
+    /// safe in MiniJinja:
+    ///
+    /// ```ignore
+    /// v.render("page", context! { counter => v.reactive(&Counter { count: 0 }) })
+    /// ```
+    ///
+    /// The component template can use `{{ on("increment") }}` to emit the
+    /// phase-1 trigger attributes.
+    pub fn reactive<C>(&self, component: &C) -> String
+    where
+        C: crate::reactive::ReactiveComponent,
+    {
+        let Some(key) = self.reactive_secret_key.as_deref() else {
+            tracing::error!("reactive component rendered without a reactive secret key");
+            return String::new();
+        };
+        crate::reactive::render_component(component, &self.renderer, key).unwrap_or_else(|error| {
+            tracing::error!(error = %error, "reactive component render failed");
+            String::new()
+        })
     }
 
     fn merge(&self, props: Value) -> Value {
@@ -115,6 +141,7 @@ impl FromRequestParts<AppState> for View {
         Ok(View {
             renderer: state.view.clone(),
             shared,
+            reactive_secret_key: state.reactive_secret_key.clone(),
             url,
             is_turbo_stream,
             headers: parts.headers.clone(),
