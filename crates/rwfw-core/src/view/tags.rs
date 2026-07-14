@@ -178,6 +178,12 @@ pub fn parse_def(source: &str) -> ComponentDef {
 }
 
 /// Compile all `<x-...>` tags in `src` into plain MiniJinja.
+/// Name that no template context defines, so binding a prop to it yields undefined.
+///
+/// The renderer runs with `UndefinedBehavior::Chainable`, so reading an unknown name is undefined
+/// rather than an error -- which is exactly the value an unpassed, undefaulted prop should hold.
+const UNDEFINED_PROP: &str = "__rwfw_undefined_prop";
+
 pub fn compile(src: &str, registry: &ComponentRegistry) -> String {
     let mut out = src.to_string();
     // Self-closing tags first (they can sit inside paired bodies).
@@ -409,14 +415,21 @@ fn emit(name: &str, attrs_str: &str, body: &str, registry: &ComponentRegistry) -
         }
     }
 
-    // Resolve prop values: passed value, else declared default (missing => undefined).
+    // Resolve prop values: passed value, else declared default, else undefined.
+    //
+    // A declared prop that is neither passed nor defaulted must still ENTER the component's scope,
+    // bound to undefined. Leaving it out of the `with` block is not the same as undefined: the name
+    // then falls through to the CALLER's context, so a component that declares `label` and is used
+    // on a page that happens to have a `label` renders the page's label instead of nothing. The
+    // component silently shows someone else's data.
     let mut with_kv: Vec<String> = Vec::new();
     for (pname, default) in &def.props {
-        if let Some(v) = passed_props.get(pname) {
-            with_kv.push(format!("{pname}={v}"));
-        } else if let Some(d) = default {
-            with_kv.push(format!("{pname}={d}"));
-        }
+        let value = match (passed_props.get(pname), default) {
+            (Some(passed), _) => passed.clone(),
+            (None, Some(declared)) => declared.clone(),
+            (None, None) => UNDEFINED_PROP.to_string(),
+        };
+        with_kv.push(format!("{pname}={value}"));
     }
 
     let attrs_dict = format!(
@@ -624,6 +637,40 @@ mod tests {
         let registry = reg("alert", "{#def type=\"info\" #}");
         let out = compile("<x-alert>Hi</x-alert>", &registry);
         assert!(out.contains("type=\"info\""));
+    }
+
+    #[test]
+    fn undefaulted_prop_still_enters_scope_so_it_cannot_read_the_caller() {
+        let registry = reg("alert", "{#def title #}");
+        let out = compile("<x-alert>Hi</x-alert>", &registry);
+
+        // `title` is declared, was not passed, and has no default. It must still be bound in the
+        // `with` block -- otherwise the name resolves against the caller's context and the
+        // component renders the *page's* title as if it were its own.
+        assert!(
+            out.contains(&format!("title={UNDEFINED_PROP}")),
+            "undeclared prop must shadow the caller: {out}"
+        );
+    }
+
+    #[test]
+    fn undefaulted_prop_renders_as_undefined_not_as_the_callers_value() -> Result<(), minijinja::Error>
+    {
+        let registry = reg("alert", "{#def title #}");
+        let compiled = compile("<x-alert/>", &registry);
+
+        let mut env = minijinja::Environment::new();
+        env.set_undefined_behavior(minijinja::UndefinedBehavior::Chainable);
+        env.add_template("components/alert/index.html.j2", "[{{ title }}]")?;
+        env.add_template("page", &compiled)?;
+
+        // The caller has a `title` of its own. The component must not see it.
+        let out = env
+            .get_template("page")?
+            .render(minijinja::context! { title => "THE PAGE TITLE" })?;
+
+        assert_eq!(out.trim(), "[]", "component leaked the caller's title: {out}");
+        Ok(())
     }
 
     #[test]
