@@ -234,6 +234,58 @@ pub async fn find_current_user(
     }))
 }
 
+/// Carrega o `CurrentUser` a partir do id, sem passar por sessao.
+///
+/// Existe para quem ja autenticou por outro meio e tem o id em maos: token de
+/// dispositivo, chave de API, job de fundo. Sem isso, cada consumidor reescreve
+/// SELECT contra `auth_users`, `auth_roles` e `auth_user_roles` — tabelas que
+/// pertencem ao mod-auth. Foi o que aconteceu no neodrive, cujo `mod-sync`
+/// reimplementou `load_roles` linha a linha.
+///
+/// Duplicar esse SQL nao e so repeticao: no dia em que o formato de papeis mudar
+/// (papel por escopo, permissao negativa, soft-delete de usuario), o consumidor
+/// que copiou continua respondendo com o modelo velho e ninguem percebe, porque
+/// ele responde — apenas errado.
+///
+/// Devolve `None` se o usuario nao existe. Autenticar e trabalho de quem chama:
+/// esta funcao nao valida credencial nenhuma, so materializa o usuario.
+pub async fn find_user_by_id(
+    db: &DatabaseConnection,
+    user_id: uuid::Uuid,
+) -> anyhow::Result<Option<CurrentUser>> {
+    let backend = db.get_database_backend();
+    let sql = format!(
+        "SELECT u.id, u.name, u.email \
+         FROM auth_users u \
+         WHERE u.id = {} \
+         LIMIT 1",
+        crate::sql::placeholder(backend, 1),
+    );
+
+    let Some(row) = db
+        .query_one(Statement::from_sql_and_values(
+            backend,
+            sql,
+            vec![user_id.into()],
+        ))
+        .await?
+    else {
+        return Ok(None);
+    };
+
+    let id: uuid::Uuid = row.try_get("", "id")?;
+    let roles = load_roles(db, id).await?;
+    let permissions = load_permissions(db, id).await?;
+
+    Ok(Some(CurrentUser {
+        id,
+        name: row.try_get("", "name")?,
+        email: row.try_get("", "email")?,
+        roles,
+        permissions,
+    }))
+}
+
 pub async fn user_has_permission(
     db: &DatabaseConnection,
     user_id: uuid::Uuid,
@@ -797,4 +849,168 @@ fn parse_cookie<'a>(cookie_header: &'a str, name: &str) -> Option<&'a str> {
         let (key, value) = cookie.trim().split_once('=')?;
         (key == name).then_some(value)
     })
+}
+
+#[cfg(test)]
+mod find_user_by_id_tests {
+    use super::*;
+    use sea_orm::{ConnectionTrait, Database};
+
+    /// Schema copiado das migrations do mod-auth (variantes `.sqlite.sql`).
+    /// Se elas mudarem e este teste continuar verde, e sinal de que a copia
+    /// envelheceu — exatamente o problema que `find_user_by_id` existe para
+    /// evitar do lado dos consumidores.
+    const SCHEMA: &[&str] = &[
+        "CREATE TABLE auth_users (id TEXT PRIMARY KEY NOT NULL, name TEXT NOT NULL, \
+         email TEXT NOT NULL UNIQUE, password_hash TEXT)",
+        "CREATE TABLE auth_roles (id TEXT PRIMARY KEY NOT NULL, name TEXT NOT NULL UNIQUE)",
+        "CREATE TABLE auth_permissions (id TEXT PRIMARY KEY NOT NULL, name TEXT NOT NULL UNIQUE)",
+        "CREATE TABLE auth_user_roles (user_id TEXT NOT NULL, role_id TEXT NOT NULL, \
+         PRIMARY KEY (user_id, role_id))",
+        "CREATE TABLE auth_role_permissions (role_id TEXT NOT NULL, permission_id TEXT NOT NULL, \
+         PRIMARY KEY (role_id, permission_id))",
+    ];
+
+    /// Escreve o id como a produção escreve.
+    ///
+    /// No SQLite o `sqlx` codifica `Uuid` como BLOB, então um id inserido como
+    /// texto NÃO casa com o mesmo id ligado como parâmetro — a consulta devolve
+    /// vazio, sem erro. `crate::sql::uuid_literal` é o helper que resolve isso, e
+    /// semear sem ele faz o teste reprovar código correto.
+    fn id_sql(db: &DatabaseConnection, id: uuid::Uuid) -> String {
+        crate::sql::uuid_literal(db.get_database_backend(), id)
+    }
+
+    async fn banco_com_usuario() -> (DatabaseConnection, uuid::Uuid) {
+        let db = Database::connect("sqlite::memory:").await.expect("sqlite");
+        for ddl in SCHEMA {
+            db.execute_unprepared(ddl).await.expect("ddl");
+        }
+
+        let user_id = uuid::Uuid::new_v4();
+        let role_id = uuid::Uuid::new_v4();
+        let outro_role = uuid::Uuid::new_v4();
+        let perm_a = uuid::Uuid::new_v4();
+        let perm_b = uuid::Uuid::new_v4();
+
+        for sql in [
+            format!(
+                "INSERT INTO auth_users (id, name, email) VALUES ({}, 'Bruno', 'bruno@example.com')",
+                id_sql(&db, user_id)
+            ),
+            format!("INSERT INTO auth_roles (id, name) VALUES ({}, 'editor')", id_sql(&db, role_id)),
+            format!("INSERT INTO auth_roles (id, name) VALUES ({}, 'admin')", id_sql(&db, outro_role)),
+            format!("INSERT INTO auth_permissions (id, name) VALUES ({}, 'sync:read')", id_sql(&db, perm_a)),
+            format!("INSERT INTO auth_permissions (id, name) VALUES ({}, 'sync:write')", id_sql(&db, perm_b)),
+            format!("INSERT INTO auth_user_roles (user_id, role_id) VALUES ({}, {})", id_sql(&db, user_id), id_sql(&db, role_id)),
+            format!("INSERT INTO auth_user_roles (user_id, role_id) VALUES ({}, {})", id_sql(&db, user_id), id_sql(&db, outro_role)),
+            format!(
+                "INSERT INTO auth_role_permissions (role_id, permission_id) VALUES ({}, {})",
+                id_sql(&db, role_id), id_sql(&db, perm_a)
+            ),
+            format!(
+                "INSERT INTO auth_role_permissions (role_id, permission_id) VALUES ({}, {})",
+                id_sql(&db, outro_role), id_sql(&db, perm_b)
+            ),
+            // Mesma permissao por DOIS papeis: o DISTINCT do load_permissions
+            // precisa colapsar, senao o consumidor recebe duplicata.
+            format!(
+                "INSERT INTO auth_role_permissions (role_id, permission_id) VALUES ({}, {})",
+                id_sql(&db, outro_role), id_sql(&db, perm_a)
+            ),
+        ] {
+            db.execute_unprepared(&sql).await.expect("seed");
+        }
+
+        (db, user_id)
+    }
+
+    #[tokio::test]
+    async fn materializa_usuario_com_papeis_e_permissoes() {
+        let (db, user_id) = banco_com_usuario().await;
+
+        let user = find_user_by_id(&db, user_id)
+            .await
+            .expect("consulta")
+            .expect("usuario existe");
+
+        assert_eq!(user.id, user_id);
+        assert_eq!(user.email, "bruno@example.com");
+        assert_eq!(
+            user.roles,
+            vec!["admin".to_string(), "editor".to_string()],
+            "papeis vem ordenados por nome, como em find_current_user"
+        );
+        assert_eq!(
+            user.permissions,
+            vec!["sync:read".to_string(), "sync:write".to_string()],
+            "permissao concedida por dois papeis nao pode aparecer duplicada"
+        );
+    }
+
+    #[tokio::test]
+    async fn usuario_inexistente_devolve_none_em_vez_de_erro() {
+        let (db, _) = banco_com_usuario().await;
+
+        let achado = find_user_by_id(&db, uuid::Uuid::new_v4())
+            .await
+            .expect("id desconhecido e resposta valida, nao falha");
+
+        assert!(achado.is_none());
+    }
+
+    #[tokio::test]
+    async fn usuario_sem_papel_vem_com_listas_vazias_e_sem_poder() {
+        let (db, _) = banco_com_usuario().await;
+        let orfao = uuid::Uuid::new_v4();
+        db.execute_unprepared(&format!(
+            "INSERT INTO auth_users (id, name, email) VALUES ({}, 'Sem Papel', 'orfao@example.com')",
+            id_sql(&db, orfao)
+        ))
+        .await
+        .expect("seed");
+
+        let user = find_user_by_id(&db, orfao)
+            .await
+            .expect("consulta")
+            .expect("usuario existe");
+
+        assert!(user.roles.is_empty());
+        assert!(user.permissions.is_empty());
+        assert!(
+            !user.can("sync:read"),
+            "sem papel nao pode nada — fail-closed"
+        );
+    }
+
+    /// O contrato que torna `find_user_by_id` substituivel pelo caminho de sessao:
+    /// os dois precisam materializar o MESMO usuario. Se divergirem, um consumidor
+    /// autenticado por token de dispositivo teria autorizacao diferente de um
+    /// autenticado por cookie.
+    #[tokio::test]
+    async fn concorda_com_find_current_user_para_o_mesmo_usuario() {
+        let (db, user_id) = banco_com_usuario().await;
+        db.execute_unprepared(
+            "CREATE TABLE auth_sessions (token TEXT PRIMARY KEY NOT NULL, user_id TEXT NOT NULL, \
+             expires_at TEXT NOT NULL)",
+        )
+        .await
+        .expect("ddl");
+        db.execute_unprepared(&format!(
+            "INSERT INTO auth_sessions (token, user_id, expires_at) \
+             VALUES ('tok', {}, '2999-01-01T00:00:00.000Z')",
+            id_sql(&db, user_id)
+        ))
+        .await
+        .expect("seed");
+
+        let por_id = find_user_by_id(&db, user_id).await.expect("id").expect("achou");
+        let por_sessao = find_current_user(&db, "tok").await.expect("sessao").expect("achou");
+
+        assert_eq!(por_id.id, por_sessao.id);
+        assert_eq!(por_id.name, por_sessao.name);
+        assert_eq!(por_id.email, por_sessao.email);
+        assert_eq!(por_id.roles, por_sessao.roles);
+        assert_eq!(por_id.permissions, por_sessao.permissions);
+    }
 }
