@@ -171,10 +171,9 @@ fn discover_routes(routes_path: &Path) -> Vec<RouteEntry> {
 fn segment_to_axum(s: &str) -> String {
     if s.starts_with('[') && s.ends_with(']') {
         let inner = &s[1..s.len() - 1];
-        if inner.starts_with("...") {
-            format!("{{*{}}}", &inner[3..])
-        } else {
-            format!("{{{inner}}}")
+        match inner.strip_prefix("...") {
+            Some(resto) => format!("{{*{resto}}}"),
+            None => format!("{{{inner}}}"),
         }
     } else {
         s.to_string()
@@ -188,10 +187,9 @@ fn segment_to_axum(s: &str) -> String {
 fn segment_to_ident(s: &str) -> String {
     if s.starts_with('[') && s.ends_with(']') {
         let inner = &s[1..s.len() - 1];
-        if inner.starts_with("...") {
-            format!("catch_{}", &inner[3..])
-        } else {
-            format!("param_{inner}")
+        match inner.strip_prefix("...") {
+            Some(resto) => format!("catch_{resto}"),
+            None => format!("param_{inner}"),
         }
     } else {
         s.replace('-', "_")
