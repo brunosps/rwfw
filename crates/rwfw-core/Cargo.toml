@@ -37,7 +37,7 @@ validator = { version = "0.20", features = ["derive"] }
 rwfw-shared = { path = "../rwfw-shared" }
 hyper = "1"
 http = "1"
-reqwest = { version = "0.12", features = ["json"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 
 [dev-dependencies]
 serde_urlencoded = "0.7"
