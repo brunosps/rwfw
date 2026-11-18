@@ -22,9 +22,15 @@ impl TestApp {
     /// Spawn the full application against the test database (running migrations
     /// first). Returns `None` (skip) when `RWFW_TEST_DATABASE_URL` is unset.
     pub async fn spawn() -> Option<TestApp> {
+        Self::spawn_with(|config| config).await
+    }
+
+    /// Like [`TestApp::spawn`], but lets the test adjust the config first (for
+    /// example with `AppConfig::with_override`).
+    pub async fn spawn_with(configure: impl FnOnce(AppConfig) -> AppConfig) -> Option<TestApp> {
         let db_url = test_db_url().await;
 
-        let config = AppConfig::for_test(&db_url).expect("build test config");
+        let config = configure(AppConfig::for_test(&db_url).expect("build test config"));
 
         // Run migrations exactly once per test process (tests run in parallel;
         // concurrent migrations on a fresh DB would race).

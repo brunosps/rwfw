@@ -201,10 +201,9 @@ impl RwfwApp {
         // before shared props read it, and verifies double-submit on form posts.
         router = router.layer(middleware::from_fn(crate::csrf::csrf_middleware));
 
-        // Security response headers (opt-out via `security.headers_enabled`).
-        router = crate::security::apply_security_headers(router, &security);
-
         // Optional per-process rate limiting on `/auth/*` (opt-in; default off).
+        // It still runs before CSRF, but sits inside the security headers so a
+        // 429 carries them like any other response.
         if security.rate_limit.enabled {
             let limiter = crate::rate_limit::RateLimiter::new(
                 security.rate_limit.max_requests,
@@ -214,6 +213,20 @@ impl RwfwApp {
                 crate::rate_limit::rate_limit_middleware(limiter),
             ));
         }
+
+        // Security response headers (opt-out via `security.headers_enabled`).
+        // Outermost, so every response gets them, including early rejections.
+        if security.headers_enabled && security.csp_allows_inline_scripts() {
+            tracing::warn!(
+                "security.content_security_policy lets inline <script> run, so it does not \
+                 stop injected scripts. Layouts generated since rwfw 0.1.0-alpha.7 load \
+                 every script from a file; once yours does, set content_security_policy \
+                 to a script-src without 'unsafe-inline' (see \
+                 rwfw_core::config::STRICT_CONTENT_SECURITY_POLICY). A later release \
+                 makes that the default."
+            );
+        }
+        router = crate::security::apply_security_headers(router, &security);
 
         let router = router.with_state(state);
 
