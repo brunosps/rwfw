@@ -1,4 +1,8 @@
 pub mod local;
+#[cfg(feature = "oidc")]
+pub mod oidc;
+#[cfg(not(feature = "oidc"))]
+#[path = "oidc_disabled.rs"]
 pub mod oidc;
 
 use serde::Deserialize;

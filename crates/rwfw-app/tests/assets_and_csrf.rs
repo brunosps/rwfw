@@ -98,6 +98,7 @@ async fn emits_security_headers() {
     };
     assert_eq!(header("x-content-type-options"), "nosniff");
     assert_eq!(header("x-frame-options"), "SAMEORIGIN");
+    assert_eq!(header("referrer-policy"), "strict-origin-when-cross-origin");
     assert!(
         header("content-security-policy").contains("default-src 'self'"),
         "missing/unexpected CSP: {}",
@@ -107,5 +108,54 @@ async fn emits_security_headers() {
     assert!(
         res.headers().get("strict-transport-security").is_none(),
         "HSTS should be off by default"
+    );
+}
+
+#[tokio::test]
+async fn rate_limited_responses_carry_security_headers() {
+    let Some(app) = TestApp::spawn_with(|config| {
+        config
+            .with_override("security.rate_limit.enabled", true)
+            .and_then(|c| c.with_override("security.rate_limit.max_requests", 1))
+            .and_then(|c| c.with_override("security.referrer_policy", "no-referrer"))
+            .expect("override security config")
+    })
+    .await
+    else {
+        eprintln!("skipping rate_limited_responses_carry_security_headers: no test database");
+        return;
+    };
+
+    let first = app
+        .get("/auth/login")
+        .send()
+        .await
+        .expect("first GET /auth/login");
+    assert_ne!(
+        first.status().as_u16(),
+        429,
+        "first request must pass the limiter"
+    );
+
+    let res = app
+        .get("/auth/login")
+        .send()
+        .await
+        .expect("second GET /auth/login");
+    assert_eq!(res.status().as_u16(), 429);
+    let header = |name: &str| {
+        res.headers()
+            .get(name)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("")
+            .to_string()
+    };
+    assert_eq!(header("x-content-type-options"), "nosniff");
+    assert_eq!(header("x-frame-options"), "SAMEORIGIN");
+    assert_eq!(header("referrer-policy"), "no-referrer");
+    assert!(
+        header("content-security-policy").contains("default-src 'self'"),
+        "429 without CSP: {:?}",
+        res.headers()
     );
 }

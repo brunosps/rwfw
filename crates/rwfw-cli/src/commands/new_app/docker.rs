@@ -56,7 +56,7 @@ ENV RWFW_ENV=production
 ENV RWFW_RUN_MIGRATIONS=1
 WORKDIR /app
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates libssl3 libstdc++6 \
+    && apt-get install -y --no-install-recommends ca-certificates libstdc++6 \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=rust-builder /app/target/release/${{APP_PACKAGE}} /usr/local/bin/rwfw-app
 COPY --from=rust-builder /app/config ./config

@@ -4,6 +4,14 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[features]
+default = ["postgres", "sqlite"]
+# Database drivers. Both are on by default; an app that uses only one can set
+# `default-features = false, features = ["postgres"]` and drop the other driver
+# (and, for SQLite, the bundled libsqlite3-sys) from its build.
+postgres = ["sea-orm/sqlx-postgres"]
+sqlite = ["sea-orm/sqlx-sqlite"]
+
 [dependencies]
 axum = { workspace = true }
 axum-extra = { workspace = true }

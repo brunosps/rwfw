@@ -1,4 +1,5 @@
 use anyhow::Context;
+use rwfw_core::config::STRICT_CONTENT_SECURITY_POLICY;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -67,6 +68,24 @@ pub enum DatabaseKind {
     Sqlite,
 }
 
+impl DatabaseKind {
+    /// Feature of rwfw-core / mod-auth / rwfw-tauri that compiles this driver.
+    fn feature(self) -> &'static str {
+        match self {
+            Self::Postgres => "postgres",
+            Self::Sqlite => "sqlite",
+        }
+    }
+
+    /// sea-orm feature for this driver.
+    fn sea_orm_feature(self) -> &'static str {
+        match self {
+            Self::Postgres => "sqlx-postgres",
+            Self::Sqlite => "sqlx-sqlite",
+        }
+    }
+}
+
 pub fn run(
     name: &str,
     example: ExampleKind,
@@ -77,33 +96,19 @@ pub fn run(
     rwfw_git: Option<&str>,
     rwfw_tag: Option<&str>,
 ) -> anyhow::Result<()> {
-    let app_name = to_kebab(name);
-    if app_name.is_empty() {
-        anyhow::bail!("App name must contain at least one ASCII letter or number");
-    }
-
-    let app_dir = Path::new(&app_name);
-    if app_dir.exists() {
-        anyhow::bail!("App directory already exists: {}", app_dir.display());
-    }
+    let (app_name, app_dir) = resolve_target(name, &std::env::current_dir()?)?;
+    ensure_target_is_usable(&app_dir)?;
+    let in_place = app_dir == Path::new(".");
+    let app_dir = app_dir.as_path();
 
     let dependency_source = DependencySource::resolve(rwfw_path, rwfw_version, rwfw_git, rwfw_tag)?;
-    let context = AppTemplateContext {
-        app_name: app_name.clone(),
-        app_crate_ident: app_name.replace('-', "_"),
-        app_title: to_title(&app_name),
-        database_name: format!("{}_dev", app_name.replace('-', "_")),
-        docker_database_name: app_name.replace('-', "_"),
-        rwfw_core_dep: dependency_source.dependency("rwfw-core"),
-        rwfw_shared_dep: dependency_source.dependency("rwfw-shared"),
-        rwfw_macros_dep: dependency_source.dependency("rwfw-macros"),
-        mod_auth_dep: dependency_source.module_dependency("auth"),
-        rwfw_tauri_dep: dependency_source.dependency_with_features("rwfw-tauri", &["desktop"]),
+    let context = AppTemplateContext::new(
+        app_name.clone(),
         example,
         database,
         tauri,
         dependency_source,
-    };
+    );
 
     create_dirs(app_dir)?;
     create_example_dirs(app_dir, example)?;
@@ -243,8 +248,12 @@ pub fn run(
         &app_dir.join("crates/app/web/assets/dev-livereload.js"),
         DEV_LIVERELOAD_JS.to_string(),
     )?;
-    // The base layout's import map points at /assets/reactive.js; without the
-    // file the whole Stimulus boot module would fail in generated apps.
+    // The base layout loads /assets/boot.js, which imports /assets/reactive.js;
+    // without either file Turbo/Stimulus never boot in generated apps.
+    write_file(
+        &app_dir.join("crates/app/web/assets/boot.js"),
+        BOOT_JS.to_string(),
+    )?;
     write_file(
         &app_dir.join("crates/app/web/assets/reactive.js"),
         REACTIVE_JS.to_string(),
@@ -295,7 +304,9 @@ pub fn run(
     );
     let is_postgres = matches!(context.database, DatabaseKind::Postgres);
     println!("Next steps:");
-    println!("  cd {app_name}");
+    if !in_place {
+        println!("  cd {app_name}");
+    }
     if is_postgres {
         println!("  docker compose -f compose.dev.yaml up -d");
     }
@@ -334,6 +345,39 @@ struct AppTemplateContext {
     database: DatabaseKind,
     tauri: bool,
     dependency_source: DependencySource,
+}
+
+impl AppTemplateContext {
+    fn new(
+        app_name: String,
+        example: ExampleKind,
+        database: DatabaseKind,
+        tauri: bool,
+        dependency_source: DependencySource,
+    ) -> Self {
+        Self {
+            app_name: app_name.clone(),
+            app_crate_ident: app_name.replace('-', "_"),
+            app_title: to_title(&app_name),
+            database_name: format!("{}_dev", app_name.replace('-', "_")),
+            docker_database_name: app_name.replace('-', "_"),
+            // Only the chosen database driver is compiled in: default features are
+            // off for every framework crate that carries a driver, otherwise Cargo
+            // feature unification would bring the other one back.
+            rwfw_core_dep: dependency_source
+                .dependency_without_defaults("crates/rwfw-core", &[database.feature()]),
+            rwfw_shared_dep: dependency_source.dependency("rwfw-shared"),
+            rwfw_macros_dep: dependency_source.dependency("rwfw-macros"),
+            mod_auth_dep: dependency_source
+                .dependency_without_defaults("crates/modules/auth", &[database.feature(), "oidc"]),
+            rwfw_tauri_dep: dependency_source
+                .dependency_without_defaults("crates/rwfw-tauri", &["desktop", database.feature()]),
+            example,
+            database,
+            tauri,
+            dependency_source,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -425,40 +469,20 @@ impl DependencySource {
         }
     }
 
-    fn module_dependency(&self, module_name: &str) -> String {
-        match self {
-            Self::Path(root) => {
-                let path = root.join("crates").join("modules").join(module_name);
-                format!("{{ path = \"{}\" }}", path_for_toml(&path))
-            }
-            Self::Version(version) => format!("\"{version}\""),
-            Self::Git { repository, tag } => git_dependency(repository, tag),
-        }
-    }
-
-    /// Like [`dependency`] but with explicit cargo features (e.g. `desktop` for
-    /// `rwfw-tauri`). Always emits an inline-table form.
-    fn dependency_with_features(&self, crate_name: &str, features: &[&str]) -> String {
+    /// Dependency on the framework crate at `crate_dir` (relative to the rwfw
+    /// repo root) with default features off and exactly `features` on.
+    fn dependency_without_defaults(&self, crate_dir: &str, features: &[&str]) -> String {
         let feats = features
             .iter()
             .map(|f| format!("\"{f}\""))
             .collect::<Vec<_>>()
             .join(", ");
-        match self {
-            Self::Path(root) => {
-                let path = root.join("crates").join(crate_name);
-                format!(
-                    "{{ path = \"{}\", features = [{feats}] }}",
-                    path_for_toml(&path)
-                )
-            }
-            Self::Version(version) => {
-                format!("{{ version = \"{version}\", features = [{feats}] }}")
-            }
-            Self::Git { repository, tag } => {
-                format!("{{ git = \"{repository}\", tag = \"{tag}\", features = [{feats}] }}")
-            }
-        }
+        let source = match self {
+            Self::Path(root) => format!("path = \"{}\"", path_for_toml(&root.join(crate_dir))),
+            Self::Version(version) => format!("version = \"{version}\""),
+            Self::Git { repository, tag } => format!("git = \"{repository}\", tag = \"{tag}\""),
+        };
+        format!("{{ {source}, default-features = false, features = [{feats}] }}")
     }
 }
 
@@ -604,6 +628,7 @@ const STIMULUS_JS: &[u8] = include_bytes!("../../../../rwfw-app/web/vendor/stimu
 const VENDOR_LOCK: &str = include_str!("../../../../rwfw-app/web/vendor.lock");
 const APP_CSS: &str = include_str!("../../../../rwfw-app/web/assets/app.css");
 const DEV_LIVERELOAD_JS: &str = include_str!("../../../../rwfw-app/web/assets/dev-livereload.js");
+const BOOT_JS: &str = include_str!("../../../../rwfw-app/web/assets/boot.js");
 const REACTIVE_JS: &str = include_str!("../../../../rwfw-app/web/assets/reactive.js");
 const BASE_LAYOUT_TEMPLATE: &str =
     include_str!("../../../../rwfw-app/web/templates/layouts/base.html.j2");
@@ -959,7 +984,7 @@ tower-http = { version = "0.6", features = ["fs", "trace", "cors"] }
 tower-sessions = "0.14"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-sea-orm = { version = "1", features = ["sqlx-postgres", "sqlx-sqlite", "runtime-tokio-rustls", "macros"] }
+sea-orm = { version = "1", features = ["__SEA_ORM_DRIVER__", "runtime-tokio-rustls", "macros"] }
 async-trait = "0.1"
 inventory = "0.3"
 tracing = "0.1"
@@ -972,6 +997,7 @@ chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1", features = ["v4", "serde"] }
 "#
     .replace("__EXAMPLE_MODULE__", context.example.module_name())
+    .replace("__SEA_ORM_DRIVER__", context.database.sea_orm_feature())
     .replace("__TAURI_MEMBER__", tauri_member)
 }
 
@@ -1002,6 +1028,10 @@ security:
   headers_enabled: true
   hsts: false
   frame_options: "SAMEORIGIN"
+  referrer_policy: "strict-origin-when-cross-origin"
+  # The generated layout loads every script from a file, so scripts need no
+  # 'unsafe-inline'. Keep it that way: an inline <script> will be blocked.
+  content_security_policy: "{csp}"
   rate_limit:
     enabled: false
     max_requests: 10
@@ -1018,6 +1048,7 @@ app:
 "#,
         db_url = dev_database_url(context),
         app_title = context.app_title,
+        csp = STRICT_CONTENT_SECURITY_POLICY,
     )
 }
 
@@ -1146,8 +1177,9 @@ fn tauri_conf_json(context: &AppTemplateContext) -> String {
 }
 
 fn production_yaml() -> String {
-    r#"database:
-  url: "${RWFW__DATABASE__URL}"
+    format!(
+        r#"database:
+  url: "${{RWFW__DATABASE__URL}}"
 
 server:
   host: "0.0.0.0"
@@ -1161,6 +1193,10 @@ security:
   headers_enabled: true
   hsts: true
   frame_options: "SAMEORIGIN"
+  referrer_policy: "strict-origin-when-cross-origin"
+  # The generated layout loads every script from a file, so scripts need no
+  # 'unsafe-inline'. Keep it that way: an inline <script> will be blocked.
+  content_security_policy: "{csp}"
   rate_limit:
     enabled: false
     max_requests: 10
@@ -1170,9 +1206,10 @@ auth:
   session_ttl: 86400
   oidc:
     redirect_base_url: "http://localhost:8080"
-    providers: {}
-"#
-    .to_string()
+    providers: {{}}
+"#,
+        csp = STRICT_CONTENT_SECURITY_POLICY,
+    )
 }
 
 fn app_cargo_toml(context: &AppTemplateContext) -> String {
@@ -1229,6 +1266,56 @@ tracing = {{ workspace = true }}
     )
 }
 
+/// App name and target directory for `rwfw new app <name>`. `.` generates into
+/// the current directory and takes the name from its folder; any other name
+/// becomes `./<kebab-name>`.
+fn resolve_target(name: &str, cwd: &Path) -> anyhow::Result<(String, PathBuf)> {
+    let (app_name, app_dir) = if name.trim() == "." {
+        let folder = cwd
+            .file_name()
+            .map(|folder| folder.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        (to_kebab(&folder), PathBuf::from("."))
+    } else {
+        let app_name = to_kebab(name);
+        let app_dir = PathBuf::from(&app_name);
+        (app_name, app_dir)
+    };
+    if app_name.is_empty() {
+        anyhow::bail!("App name must contain at least one ASCII letter or number");
+    }
+    Ok((app_name, app_dir))
+}
+
+/// The target may not exist yet, or be an empty directory (a fresh `git init`
+/// or clone with only `.git` counts as empty). Anything else is refused up
+/// front so a half-written app never mixes with existing files.
+fn ensure_target_is_usable(dir: &Path) -> anyhow::Result<()> {
+    if !dir.exists() {
+        return Ok(());
+    }
+    if !dir.is_dir() {
+        anyhow::bail!("{} exists and is not a directory", dir.display());
+    }
+    let mut others = fs::read_dir(dir)
+        .with_context(|| format!("reading {}", dir.display()))?
+        .filter_map(|entry| entry.ok())
+        .map(|entry| entry.file_name().to_string_lossy().into_owned())
+        .filter(|name| name != ".git")
+        .collect::<Vec<_>>();
+    if !others.is_empty() {
+        others.sort();
+        others.truncate(5);
+        anyhow::bail!(
+            "App directory {} is not empty (found: {}). Use a new or empty directory; \
+             only a .git folder may already be there.",
+            dir.display(),
+            others.join(", ")
+        );
+    }
+    Ok(())
+}
+
 fn to_kebab(value: &str) -> String {
     value
         .trim()
@@ -1268,21 +1355,223 @@ mod tests {
 
     #[test]
     fn generated_layout_ships_the_reactive_runtime_it_imports() {
-        // The base layout's import map maps `rwfw-reactive` to /assets/reactive.js
-        // and the boot module imports it eagerly — if the scaffold ever stops
-        // writing the asset, every generated app loses Stimulus entirely.
+        // The base layout loads /assets/boot.js, which imports reactive.js and
+        // registers it — if the scaffold ever stops writing either asset, every
+        // generated app loses Stimulus entirely.
         assert!(
-            BASE_LAYOUT_TEMPLATE.contains(r#""rwfw-reactive": "/assets/reactive.js""#),
-            "base layout must map the reactive runtime in the import map"
+            BASE_LAYOUT_TEMPLATE
+                .contains(r#"<script type="module" src="/assets/boot.js"></script>"#),
+            "base layout must load the boot module from a file"
         );
         assert!(
-            BASE_LAYOUT_TEMPLATE.contains(r#"register("reactive""#),
-            "base layout must register the reactive Stimulus controller"
+            BOOT_JS.contains(r#"from "/assets/reactive.js""#),
+            "boot.js must import the reactive runtime"
+        );
+        assert!(
+            BOOT_JS.contains(r#"register("reactive""#),
+            "boot.js must register the reactive Stimulus controller"
         );
         assert!(
             REACTIVE_JS.contains("Controller"),
             "embedded reactive.js must be the Stimulus controller source"
         );
+    }
+
+    /// Every `<script>` start tag in `html` (lowercased).
+    fn script_tags(html: &str) -> Vec<String> {
+        let lower = html.to_ascii_lowercase();
+        lower
+            .match_indices("<script")
+            .map(|(start, _)| {
+                let end = lower[start..]
+                    .find('>')
+                    .map_or(lower.len(), |i| start + i + 1);
+                lower[start..end].to_string()
+            })
+            .collect()
+    }
+
+    #[test]
+    fn generated_layouts_have_no_inline_scripts() {
+        // The generated config ships a CSP without 'unsafe-inline' for scripts,
+        // so an inline <script> (or import map) in a layout would be blocked.
+        for (name, template) in [
+            ("base", BASE_LAYOUT_TEMPLATE),
+            ("app", APP_LAYOUT_TEMPLATE),
+            ("auth", AUTH_LAYOUT_TEMPLATE),
+            ("reading", READING_LAYOUT_TEMPLATE),
+        ] {
+            for tag in script_tags(template) {
+                assert!(
+                    tag.contains(" src="),
+                    "layouts/{name}.html.j2 has an inline script: {tag}"
+                );
+            }
+            assert!(
+                !template.contains("importmap"),
+                "layouts/{name}.html.j2 has an inline import map"
+            );
+        }
+        for (name, js) in [("boot.js", BOOT_JS), ("reactive.js", REACTIVE_JS)] {
+            assert!(
+                !js.contains("from \"@hotwired/"),
+                "{name} uses a bare specifier, which needs an import map"
+            );
+        }
+    }
+
+    #[test]
+    fn generated_config_uses_a_csp_without_inline_scripts() {
+        for yaml in [development_yaml(&test_context()), production_yaml()] {
+            let value: serde_yaml::Value = serde_yaml::from_str(&yaml).unwrap();
+            let csp = value["security"]["content_security_policy"]
+                .as_str()
+                .expect("generated config must set security.content_security_policy");
+            assert_eq!(csp, STRICT_CONTENT_SECURITY_POLICY);
+        }
+        // format! must keep the env placeholder literal.
+        assert!(production_yaml().contains(r#"url: "${RWFW__DATABASE__URL}""#));
+    }
+
+    #[test]
+    fn generated_dockerfile_does_not_install_openssl() {
+        // rwfw-core uses rustls; the binary links no libssl.
+        let dockerfile = dockerfile(&test_context());
+        assert!(!dockerfile.contains("libssl"), "{dockerfile}");
+    }
+
+    fn scratch_dir(label: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "rwfw-new-app-{label}-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn dot_takes_the_app_name_from_the_current_folder() {
+        let (name, dir) = resolve_target(".", Path::new("/home/me/My Shop_2")).unwrap();
+        assert_eq!(name, "my-shop-2");
+        assert_eq!(dir, PathBuf::from("."));
+
+        let (name, dir) = resolve_target("Demo App", Path::new("/tmp")).unwrap();
+        assert_eq!(name, "demo-app");
+        assert_eq!(dir, PathBuf::from("demo-app"));
+
+        assert!(resolve_target(".", Path::new("/")).is_err());
+    }
+
+    #[test]
+    fn accepts_missing_empty_or_git_only_directories() {
+        let root = scratch_dir("ok");
+        ensure_target_is_usable(&root.join("missing")).unwrap();
+        ensure_target_is_usable(&root).unwrap();
+        fs::create_dir_all(root.join(".git/objects")).unwrap();
+        ensure_target_is_usable(&root).unwrap();
+        fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn refuses_directories_with_files() {
+        let root = scratch_dir("busy");
+        fs::create_dir_all(root.join(".git")).unwrap();
+        fs::write(root.join("README.md"), "hi").unwrap();
+        let error = ensure_target_is_usable(&root).unwrap_err().to_string();
+        fs::remove_dir_all(&root).unwrap();
+        assert!(error.contains("is not empty"), "{error}");
+        assert!(error.contains("README.md"), "{error}");
+    }
+
+    fn test_context() -> AppTemplateContext {
+        context_for(DatabaseKind::Sqlite)
+    }
+
+    fn context_for(database: DatabaseKind) -> AppTemplateContext {
+        AppTemplateContext::new(
+            "demo-app".to_string(),
+            ExampleKind::Blog,
+            database,
+            false,
+            DependencySource::Git {
+                repository: "https://github.com/brunosps/rwfw".to_string(),
+                tag: "v0.0.0".to_string(),
+            },
+        )
+    }
+
+    #[test]
+    fn generated_app_compiles_only_the_chosen_database_driver() {
+        for (database, wanted, unwanted) in [
+            (DatabaseKind::Postgres, "postgres", "sqlite"),
+            (DatabaseKind::Sqlite, "sqlite", "postgres"),
+        ] {
+            let context = context_for(database);
+            // Every framework crate that carries a driver must turn default
+            // features off, or Cargo feature unification re-enables both.
+            for dep in [
+                &context.rwfw_core_dep,
+                &context.mod_auth_dep,
+                &context.rwfw_tauri_dep,
+            ] {
+                assert!(dep.contains("default-features = false"), "{dep}");
+                assert!(dep.contains(&format!("\"{wanted}\"")), "{dep}");
+                assert!(!dep.contains(&format!("\"{unwanted}\"")), "{dep}");
+            }
+            assert!(context.mod_auth_dep.contains("\"oidc\""));
+
+            let workspace = workspace_cargo_toml(&context);
+            let sea_orm = workspace
+                .lines()
+                .find(|line| line.starts_with("sea-orm ="))
+                .unwrap();
+            assert!(sea_orm.contains(&format!("sqlx-{wanted}")), "{sea_orm}");
+            assert!(!sea_orm.contains(&format!("sqlx-{unwanted}")), "{sea_orm}");
+        }
+    }
+
+    /// `key = "value"` from the `[section]` table of a vendor.lock.
+    fn lock_value<'a>(lock: &'a str, section: &str, key: &str) -> &'a str {
+        let header = format!("[{section}]");
+        let body = lock
+            .split_once(&header)
+            .unwrap_or_else(|| panic!("vendor.lock has no {header}"))
+            .1;
+        let body = body.split("\n[").next().unwrap();
+        body.lines()
+            .find_map(|line| {
+                let (k, v) = line.split_once('=')?;
+                (k.trim() == key).then(|| v.trim().trim_matches('"'))
+            })
+            .unwrap_or_else(|| panic!("vendor.lock {header} has no {key}"))
+    }
+
+    #[test]
+    fn layout_integrity_matches_vendor_lock_and_vendored_files() {
+        use base64::Engine;
+        use sha2::{Digest, Sha384};
+
+        for (name, bytes) in [("turbo", TURBO_JS), ("stimulus", STIMULUS_JS)] {
+            let file = lock_value(VENDOR_LOCK, name, "file");
+            let locked = lock_value(VENDOR_LOCK, name, "integrity");
+
+            let actual = format!(
+                "sha384-{}",
+                base64::engine::general_purpose::STANDARD.encode(Sha384::digest(bytes))
+            );
+            assert_eq!(locked, actual, "vendor.lock integrity for {file} is stale");
+
+            let preload =
+                format!(r#"<link rel="modulepreload" href="/{file}" integrity="{locked}">"#);
+            assert!(
+                BASE_LAYOUT_TEMPLATE.contains(&preload),
+                "base layout must preload /{file} with the vendor.lock integrity"
+            );
+        }
     }
 
     #[test]

@@ -7,7 +7,8 @@ use std::time::Duration;
 
 /// Connect using the configured database URL. The driver is chosen by URL
 /// scheme: `postgres://`/`postgresql://` -> Postgres, `sqlite:`/a bare path ->
-/// SQLite. Both drivers are compiled in; selection happens at runtime.
+/// SQLite. Each driver is compiled in only with its feature (`postgres`,
+/// `sqlite`; both by default); selection happens at runtime.
 pub async fn connect(config: &AppConfig) -> anyhow::Result<DatabaseConnection> {
     let database = config.database()?;
     connect_url(&database.url).await
@@ -16,6 +17,7 @@ pub async fn connect(config: &AppConfig) -> anyhow::Result<DatabaseConnection> {
 /// Connect to an explicit URL (used by tests, the CLI, and the Tauri host).
 pub async fn connect_url(url: &str) -> anyhow::Result<DatabaseConnection> {
     let url = normalize_url(url);
+    ensure_driver_compiled(&url)?;
     let mut opts = ConnectOptions::new(url.clone());
     // A single-writer pool for SQLite avoids SQLITE_BUSY storms and keeps the
     // per-connection PRAGMAs below effective for the only pooled connection.
@@ -42,6 +44,24 @@ pub async fn connect_url(url: &str) -> anyhow::Result<DatabaseConnection> {
     }
 
     Ok(db)
+}
+
+/// Fail with a clear message when the URL needs a driver this build left out,
+/// instead of sea-orm's generic "no supporting driver" error.
+fn ensure_driver_compiled(url: &str) -> anyhow::Result<()> {
+    if is_sqlite(url) && !cfg!(feature = "sqlite") {
+        anyhow::bail!(
+            "database URL is SQLite, but rwfw-core was built without the `sqlite` feature"
+        );
+    }
+    if (url.starts_with("postgres://") || url.starts_with("postgresql://"))
+        && !cfg!(feature = "postgres")
+    {
+        anyhow::bail!(
+            "database URL is Postgres, but rwfw-core was built without the `postgres` feature"
+        );
+    }
+    Ok(())
 }
 
 /// True if the (normalized) URL targets the SQLite driver.
@@ -86,5 +106,30 @@ fn ensure_sqlite_create(url: &str) -> String {
         }
     } else {
         format!("{url}?mode=rwc")
+    }
+}
+
+#[cfg(test)]
+mod driver_feature_tests {
+    #[cfg(not(feature = "sqlite"))]
+    #[tokio::test]
+    async fn sqlite_url_without_the_sqlite_feature_fails_clearly() {
+        let error = super::connect_url("sqlite::memory:").await.unwrap_err();
+        assert!(
+            error.to_string().contains("without the `sqlite` feature"),
+            "{error}"
+        );
+    }
+
+    #[cfg(not(feature = "postgres"))]
+    #[tokio::test]
+    async fn postgres_url_without_the_postgres_feature_fails_clearly() {
+        let error = super::connect_url("postgres://u:p@127.0.0.1:1/db")
+            .await
+            .unwrap_err();
+        assert!(
+            error.to_string().contains("without the `postgres` feature"),
+            "{error}"
+        );
     }
 }

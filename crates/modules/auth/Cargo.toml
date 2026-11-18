@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
-rwfw-core = { path = "../../rwfw-core" }
+rwfw-core = { path = "../../rwfw-core", default-features = false }
 rwfw-shared = { path = "../../rwfw-shared" }
 rwfw-macros = { path = "../../rwfw-macros" }
 axum = { workspace = true }
@@ -21,4 +21,12 @@ anyhow = { workspace = true }
 chrono = { workspace = true }
 uuid = { workspace = true }
 validator = { version = "0.20", features = ["derive"] }
-openidconnect = "4.0.1"
+openidconnect = { version = "4.0.1", optional = true }
+
+[features]
+default = ["postgres", "sqlite", "oidc"]
+postgres = ["rwfw-core/postgres"]
+sqlite = ["rwfw-core/sqlite"]
+# SSO/OIDC login (routes /auth/sso/*). Without it those routes answer with an
+# error and openidconnect is not compiled. The OIDC migrations always run.
+oidc = ["dep:openidconnect"]

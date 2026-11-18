@@ -20,7 +20,7 @@ A generated app is a real starter application, not a temporary demo. It includes
 - An app crate plus generated `home` and auth UI modules.
 - A selectable example module: `blog` for editorial CMS flows or `shop` for ecommerce storefront flows.
 - Project-local `.rwfw/templates` for scaffold customization.
-- Hotwire frontend: server-rendered MiniJinja templates with Turbo Drive (SPA-like navigation) and Stimulus, vendored Turbo/Stimulus served via an import map, and Tailwind CSS compiled by the standalone binary — **zero npm/Node**.
+- Hotwire frontend: server-rendered MiniJinja templates with Turbo Drive (SPA-like navigation) and Stimulus, vendored Turbo/Stimulus loaded as ES modules from files (no inline script, so the CSP needs no `'unsafe-inline'`), and Tailwind CSS compiled by the standalone binary — **zero npm/Node**.
 - A protected-write example flow. The blog template has public posts and authenticated admin post management; the ecommerce template has public storefront and checkout flow.
 - Optional OIDC SSO providers configured by `rwfw auth sso add`.
 
@@ -33,6 +33,11 @@ For `0.1.0-alpha.3`, RWFW should be treated as a local-framework alpha:
 - The CLI is the product boundary.
 - The template contract is intentionally visible and editable inside generated apps.
 - Migrations are module-owned files registered centrally by the module migration registry.
+- A module's name sets its HTML prefix (`/<name>`), template namespace, and migration and permission keys.
+  Its `api_routes()` mount at `api_prefix()`, which defaults to `/api/<name>`; override it to version an
+  API (`/api/v1`) without renaming the module. The prefix must start with `/api/` (the CSRF check exempts
+  `/api/*`), and two modules cannot share one. Mount API routes through `api_routes()` rather than merging a
+  router after `build()`, or they miss the security headers, CSRF and rate-limit layers.
 - Auth identities remain local. OIDC providers link to local `auth.users` through provider+subject identity records and RWFW still issues its own session cookie.
 
 ## Rendering / View Layer
@@ -48,7 +53,7 @@ client bundler, no React, and no V8 SSR. See the [Frontend guide](FRONTEND.md) f
   into MiniJinja includes. A component is a folder `web/templates/components/<name>/index.html.j2` with a
   `{#def … #}` prop declaration, a default slot (`{{ content }}`) + named slots, and an attribute bag (the
   `attrs` filter merges classes). A dev-only `/components` catalog lists them.
-- **Interactivity**: Hotwire — vendored Turbo + Stimulus loaded via an import map (no npm). Turbo Drive gives
+- **Interactivity**: Hotwire — vendored Turbo + Stimulus loaded as ES modules from `/vendor` with SRI (no npm, no inline script). Turbo Drive gives
   SPA-like navigation; HTML forms post normally and re-render at `422` on validation errors; CSRF uses a
   double-submit token (`X-CSRF-Token`, echoed by Turbo from the `<meta>` tag). Real-time updates use Turbo
   Streams broadcast over an SSE endpoint.

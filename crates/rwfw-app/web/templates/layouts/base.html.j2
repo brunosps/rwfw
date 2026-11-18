@@ -6,22 +6,12 @@
   <meta name="csrf-token" content="{{ csrf_token }}">
   <title>{% block title %}{{ app_title | default(value="RWFW") }}{% endblock %}</title>
   <link rel="stylesheet" href="/assets/app.css">
-  <script type="importmap">
-  {
-    "imports": {
-      "@hotwired/turbo": "/vendor/turbo.min.js",
-      "@hotwired/stimulus": "/vendor/stimulus.min.js",
-      "rwfw-reactive": "/assets/reactive.js"
-    }
-  }
-  </script>
-  <script type="module">
-    import "@hotwired/turbo"
-    import { Application } from "@hotwired/stimulus"
-    import ReactiveController from "rwfw-reactive"
-    window.Stimulus = Application.start()
-    window.Stimulus.register("reactive", ReactiveController)
-  </script>
+  {#- No inline scripts: everything loads from a file, so the CSP can use
+      script-src 'self' without 'unsafe-inline'. The integrity values come from
+      web/vendor.lock; update both together when a vendored file changes. #}
+  <link rel="modulepreload" href="/vendor/turbo.min.js" integrity="sha384-NI8CHsRkv24yLcjakziHOUy0OgIw7LgwYbPOqGKuor2vpEPx5JrJOBoVjXzDrubd">
+  <link rel="modulepreload" href="/vendor/stimulus.min.js" integrity="sha384-Z9ISq680E84zQ7uFT7Pw8g/TlnoyCUECFycQz5aZs9IlrNFR56FhXoVi5U7bVi+l">
+  <script type="module" src="/assets/boot.js"></script>
   {% if is_development %}<script src="/assets/dev-livereload.js" defer></script>{% endif %}
 </head>
 <body class="min-h-full bg-slate-50 text-slate-900 antialiased">

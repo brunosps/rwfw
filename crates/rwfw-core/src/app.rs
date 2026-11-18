@@ -103,6 +103,8 @@ impl RwfwApp {
         let mut modules_nav = Vec::new();
         let mut template_roots: Vec<TemplateRoot> = Vec::new();
         let mut watch_roots: Vec<PathBuf> = Vec::new();
+        let mut api_prefixes: std::collections::HashMap<String, String> =
+            std::collections::HashMap::new();
         let mut router = Router::new();
 
         // App-level templates are registered before module templates so a product
@@ -128,9 +130,15 @@ impl RwfwApp {
             let module_routes = module.routes();
             router = router.nest(&prefix, module_routes);
 
-            // Mount API routes if any
+            // Mount API routes if any (default `/api/<name>`).
             if let Some(api_routes) = module.api_routes() {
-                let api_prefix = format!("/api/{}", name);
+                let api_prefix = module.api_prefix();
+                crate::module::validate_api_prefix(&name, &api_prefix)?;
+                if let Some(other) = api_prefixes.insert(api_prefix.clone(), name.clone()) {
+                    anyhow::bail!(
+                        "modules `{other}` and `{name}` both mount their API at `{api_prefix}`"
+                    );
+                }
                 router = router.nest(&api_prefix, api_routes);
             }
 
@@ -201,10 +209,9 @@ impl RwfwApp {
         // before shared props read it, and verifies double-submit on form posts.
         router = router.layer(middleware::from_fn(crate::csrf::csrf_middleware));
 
-        // Security response headers (opt-out via `security.headers_enabled`).
-        router = crate::security::apply_security_headers(router, &security);
-
         // Optional per-process rate limiting on `/auth/*` (opt-in; default off).
+        // It still runs before CSRF, but sits inside the security headers so a
+        // 429 carries them like any other response.
         if security.rate_limit.enabled {
             let limiter = crate::rate_limit::RateLimiter::new(
                 security.rate_limit.max_requests,
@@ -214,6 +221,20 @@ impl RwfwApp {
                 crate::rate_limit::rate_limit_middleware(limiter),
             ));
         }
+
+        // Security response headers (opt-out via `security.headers_enabled`).
+        // Outermost, so every response gets them, including early rejections.
+        if security.headers_enabled && security.csp_allows_inline_scripts() {
+            tracing::warn!(
+                "security.content_security_policy lets inline <script> run, so it does not \
+                 stop injected scripts. Layouts generated since rwfw 0.1.0-alpha.7 load \
+                 every script from a file; once yours does, set content_security_policy \
+                 to a script-src without 'unsafe-inline' (see \
+                 rwfw_core::config::STRICT_CONTENT_SECURITY_POLICY). A later release \
+                 makes that the default."
+            );
+        }
+        router = crate::security::apply_security_headers(router, &security);
 
         let router = router.with_state(state);
 
@@ -340,4 +361,114 @@ fn bytes_response(
         headers.insert(CACHE_CONTROL, HeaderValue::from_static("no-cache"));
     }
     (headers, bytes.into_owned()).into_response()
+}
+
+// Builds a real app on in-memory SQLite.
+#[cfg(all(test, feature = "sqlite"))]
+mod api_prefix_tests {
+    use super::*;
+    use axum::body::Body;
+    use axum::http::{Request, StatusCode};
+    use tower::ServiceExt;
+
+    struct ApiModule {
+        name: &'static str,
+        api_prefix: Option<&'static str>,
+    }
+
+    #[async_trait::async_trait]
+    impl Module for ApiModule {
+        fn name(&self) -> &str {
+            self.name
+        }
+        fn routes(&self) -> Router<AppState> {
+            Router::new().route("/form", axum::routing::post(|| async { "posted" }))
+        }
+        fn api_routes(&self) -> Option<Router<AppState>> {
+            Some(Router::new().route(
+                "/ping",
+                axum::routing::get(|| async { "pong" }).post(|| async { "posted" }),
+            ))
+        }
+        fn api_prefix(&self) -> String {
+            self.api_prefix
+                .map(str::to_string)
+                .unwrap_or_else(|| format!("/api/{}", self.name))
+        }
+    }
+
+    fn module(name: &'static str, api_prefix: Option<&'static str>) -> Box<dyn Module> {
+        Box::new(ApiModule { name, api_prefix })
+    }
+
+    async fn build(modules: Vec<Box<dyn Module>>) -> anyhow::Result<Router> {
+        let config = AppConfig::for_test("sqlite::memory:").unwrap();
+        let mut app = RwfwApp::new(config);
+        for module in modules {
+            app = app.module(module);
+        }
+        app.build().await
+    }
+
+    async fn status(router: &Router, method: &str, path: &str) -> StatusCode {
+        let request = Request::builder()
+            .method(method)
+            .uri(path)
+            .header("content-type", "application/x-www-form-urlencoded")
+            .body(Body::from("a=1"))
+            .unwrap();
+        router.clone().oneshot(request).await.unwrap().status()
+    }
+
+    #[tokio::test]
+    async fn api_routes_default_to_api_slash_module_name() {
+        let router = build(vec![module("sync", None)]).await.unwrap();
+        assert_eq!(
+            status(&router, "GET", "/api/sync/ping").await,
+            StatusCode::OK
+        );
+    }
+
+    #[tokio::test]
+    async fn api_prefix_override_mounts_the_api_there_and_keeps_csrf_exemption() {
+        let router = build(vec![module("sync", Some("/api/v1"))]).await.unwrap();
+        assert_eq!(status(&router, "GET", "/api/v1/ping").await, StatusCode::OK);
+        assert_eq!(
+            status(&router, "GET", "/api/sync/ping").await,
+            StatusCode::NOT_FOUND
+        );
+        // CSRF is active: the same form post to an HTML route is rejected...
+        assert_eq!(
+            status(&router, "POST", "/sync/form").await,
+            StatusCode::FORBIDDEN
+        );
+        // ...and passes under the custom prefix because it is still /api/*.
+        assert_eq!(
+            status(&router, "POST", "/api/v1/ping").await,
+            StatusCode::OK
+        );
+    }
+
+    #[tokio::test]
+    async fn api_prefix_outside_api_fails_the_build() {
+        let error = build(vec![module("sync", Some("/v1"))]).await.unwrap_err();
+        assert!(
+            error.to_string().contains("must start with `/api/`"),
+            "{error}"
+        );
+    }
+
+    #[tokio::test]
+    async fn two_modules_with_the_same_api_prefix_fail_the_build() {
+        let error = build(vec![
+            module("a", Some("/api/v1")),
+            module("b", Some("/api/v1")),
+        ])
+        .await
+        .unwrap_err();
+        assert!(
+            error.to_string().contains("both mount their API"),
+            "{error}"
+        );
+    }
 }
