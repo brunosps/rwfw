@@ -1433,6 +1433,13 @@ mod tests {
         assert!(production_yaml().contains(r#"url: "${RWFW__DATABASE__URL}""#));
     }
 
+    #[test]
+    fn generated_dockerfile_does_not_install_openssl() {
+        // rwfw-core uses rustls; the binary links no libssl.
+        let dockerfile = dockerfile(&test_context());
+        assert!(!dockerfile.contains("libssl"), "{dockerfile}");
+    }
+
     fn scratch_dir(label: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!(
             "rwfw-new-app-{label}-{}-{}",
