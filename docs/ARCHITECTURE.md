@@ -33,6 +33,11 @@ For `0.1.0-alpha.3`, RWFW should be treated as a local-framework alpha:
 - The CLI is the product boundary.
 - The template contract is intentionally visible and editable inside generated apps.
 - Migrations are module-owned files registered centrally by the module migration registry.
+- A module's name sets its HTML prefix (`/<name>`), template namespace, and migration and permission keys.
+  Its `api_routes()` mount at `api_prefix()`, which defaults to `/api/<name>`; override it to version an
+  API (`/api/v1`) without renaming the module. The prefix must start with `/api/` (the CSRF check exempts
+  `/api/*`), and two modules cannot share one. Mount API routes through `api_routes()` rather than merging a
+  router after `build()`, or they miss the security headers, CSRF and rate-limit layers.
 - Auth identities remain local. OIDC providers link to local `auth.users` through provider+subject identity records and RWFW still issues its own session cookie.
 
 ## Rendering / View Layer
