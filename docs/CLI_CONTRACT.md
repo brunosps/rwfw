@@ -18,6 +18,14 @@ rwfw auth sso add keycloak --provider keycloak --issuer-url http://localhost:808
 when not installed, and relies on RWFW live reload for templates/CSS. It does
 not require npm, Node, or a JavaScript bundler.
 
+`rwfw new app <name>` writes to `./<kebab-name>`; `rwfw new app .` writes to the current directory and
+takes the app name from the folder name. The target must not exist yet or be empty — a directory holding
+only `.git` (fresh `git init` or clone) counts as empty. Anything else is refused before any file is written.
+
+The generated app compiles only the chosen database driver (`--database postgres|sqlite`): its framework
+dependencies use `default-features = false` with that feature, plus `oidc` for `mod-auth`. See
+`docs/DISTRIBUTION.md` for the feature list.
+
 `rwfw new app` and `rwfw new example` support these app templates:
 
 - `--example blog`: editorial/blog CMS with public posts and protected admin post management.

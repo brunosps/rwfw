@@ -96,15 +96,10 @@ pub fn run(
     rwfw_git: Option<&str>,
     rwfw_tag: Option<&str>,
 ) -> anyhow::Result<()> {
-    let app_name = to_kebab(name);
-    if app_name.is_empty() {
-        anyhow::bail!("App name must contain at least one ASCII letter or number");
-    }
-
-    let app_dir = Path::new(&app_name);
-    if app_dir.exists() {
-        anyhow::bail!("App directory already exists: {}", app_dir.display());
-    }
+    let (app_name, app_dir) = resolve_target(name, &std::env::current_dir()?)?;
+    ensure_target_is_usable(&app_dir)?;
+    let in_place = app_dir == Path::new(".");
+    let app_dir = app_dir.as_path();
 
     let dependency_source = DependencySource::resolve(rwfw_path, rwfw_version, rwfw_git, rwfw_tag)?;
     let context = AppTemplateContext::new(
@@ -309,7 +304,9 @@ pub fn run(
     );
     let is_postgres = matches!(context.database, DatabaseKind::Postgres);
     println!("Next steps:");
-    println!("  cd {app_name}");
+    if !in_place {
+        println!("  cd {app_name}");
+    }
     if is_postgres {
         println!("  docker compose -f compose.dev.yaml up -d");
     }
@@ -1269,6 +1266,56 @@ tracing = {{ workspace = true }}
     )
 }
 
+/// App name and target directory for `rwfw new app <name>`. `.` generates into
+/// the current directory and takes the name from its folder; any other name
+/// becomes `./<kebab-name>`.
+fn resolve_target(name: &str, cwd: &Path) -> anyhow::Result<(String, PathBuf)> {
+    let (app_name, app_dir) = if name.trim() == "." {
+        let folder = cwd
+            .file_name()
+            .map(|folder| folder.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        (to_kebab(&folder), PathBuf::from("."))
+    } else {
+        let app_name = to_kebab(name);
+        let app_dir = PathBuf::from(&app_name);
+        (app_name, app_dir)
+    };
+    if app_name.is_empty() {
+        anyhow::bail!("App name must contain at least one ASCII letter or number");
+    }
+    Ok((app_name, app_dir))
+}
+
+/// The target may not exist yet, or be an empty directory (a fresh `git init`
+/// or clone with only `.git` counts as empty). Anything else is refused up
+/// front so a half-written app never mixes with existing files.
+fn ensure_target_is_usable(dir: &Path) -> anyhow::Result<()> {
+    if !dir.exists() {
+        return Ok(());
+    }
+    if !dir.is_dir() {
+        anyhow::bail!("{} exists and is not a directory", dir.display());
+    }
+    let mut others = fs::read_dir(dir)
+        .with_context(|| format!("reading {}", dir.display()))?
+        .filter_map(|entry| entry.ok())
+        .map(|entry| entry.file_name().to_string_lossy().into_owned())
+        .filter(|name| name != ".git")
+        .collect::<Vec<_>>();
+    if !others.is_empty() {
+        others.sort();
+        others.truncate(5);
+        anyhow::bail!(
+            "App directory {} is not empty (found: {}). Use a new or empty directory; \
+             only a .git folder may already be there.",
+            dir.display(),
+            others.join(", ")
+        );
+    }
+    Ok(())
+}
+
 fn to_kebab(value: &str) -> String {
     value
         .trim()
@@ -1384,6 +1431,53 @@ mod tests {
         }
         // format! must keep the env placeholder literal.
         assert!(production_yaml().contains(r#"url: "${RWFW__DATABASE__URL}""#));
+    }
+
+    fn scratch_dir(label: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "rwfw-new-app-{label}-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn dot_takes_the_app_name_from_the_current_folder() {
+        let (name, dir) = resolve_target(".", Path::new("/home/me/My Shop_2")).unwrap();
+        assert_eq!(name, "my-shop-2");
+        assert_eq!(dir, PathBuf::from("."));
+
+        let (name, dir) = resolve_target("Demo App", Path::new("/tmp")).unwrap();
+        assert_eq!(name, "demo-app");
+        assert_eq!(dir, PathBuf::from("demo-app"));
+
+        assert!(resolve_target(".", Path::new("/")).is_err());
+    }
+
+    #[test]
+    fn accepts_missing_empty_or_git_only_directories() {
+        let root = scratch_dir("ok");
+        ensure_target_is_usable(&root.join("missing")).unwrap();
+        ensure_target_is_usable(&root).unwrap();
+        fs::create_dir_all(root.join(".git/objects")).unwrap();
+        ensure_target_is_usable(&root).unwrap();
+        fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn refuses_directories_with_files() {
+        let root = scratch_dir("busy");
+        fs::create_dir_all(root.join(".git")).unwrap();
+        fs::write(root.join("README.md"), "hi").unwrap();
+        let error = ensure_target_is_usable(&root).unwrap_err().to_string();
+        fs::remove_dir_all(&root).unwrap();
+        assert!(error.contains("is not empty"), "{error}");
+        assert!(error.contains("README.md"), "{error}");
     }
 
     fn test_context() -> AppTemplateContext {
