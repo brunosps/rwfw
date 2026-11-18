@@ -257,14 +257,7 @@ pub fn run(
         &app_dir.join("crates/app/web/vendor/stimulus.min.js"),
         STIMULUS_JS,
     )?;
-    write_file(
-        &app_dir.join("crates/modules/auth/web/templates/login.html.j2"),
-        AUTH_LOGIN_TEMPLATE.to_string(),
-    )?;
-    write_file(
-        &app_dir.join("crates/modules/auth/web/templates/register.html.j2"),
-        AUTH_REGISTER_TEMPLATE.to_string(),
-    )?;
+    write_auth_templates(app_dir)?;
 
     write_file(
         &app_dir.join("crates/modules/home/Cargo.toml"),
@@ -514,7 +507,7 @@ fn create_dirs(app_dir: &Path) -> anyhow::Result<()> {
         "crates/modules/home/src/migrations",
         "crates/modules/home/src/routes",
         "crates/modules/home/web/templates",
-        "crates/modules/auth/web/templates",
+        APP_AUTH_TEMPLATES_DIR,
         "data",
     ] {
         fs::create_dir_all(app_dir.join(dir))?;
@@ -569,6 +562,24 @@ fn write_file(path: &Path, content: String) -> anyhow::Result<()> {
         fs::create_dir_all(parent).with_context(|| format!("creating {}", parent.display()))?;
     }
     fs::write(path, content).with_context(|| format!("writing {}", path.display()))?;
+    Ok(())
+}
+
+/// Where generated apps keep their copy of the auth pages.
+///
+/// The framework `mod-auth` crate serves templates from its own `web/` dir, so a
+/// copy under a local `crates/modules/auth` (with no crate of its own) was never
+/// read. The app template root is searched before every module root and matches
+/// the `auth/` namespace, so files here override the framework pages.
+const APP_AUTH_TEMPLATES_DIR: &str = "crates/app/web/templates/auth";
+
+fn write_auth_templates(app_dir: &Path) -> anyhow::Result<()> {
+    let dir = app_dir.join(APP_AUTH_TEMPLATES_DIR);
+    write_file(&dir.join("login.html.j2"), AUTH_LOGIN_TEMPLATE.to_string())?;
+    write_file(
+        &dir.join("register.html.j2"),
+        AUTH_REGISTER_TEMPLATE.to_string(),
+    )?;
     Ok(())
 }
 
@@ -669,7 +680,7 @@ Example selected: `{example}` ({example_title}).
 - `crates/app`: application composition crate. It wires modules, config, and migrations into one binary, and owns the shared `web/` (Hotwire layouts, vendored Turbo/Stimulus, `assets/app.css`).
 - `crates/modules/home`: minimal example module with one page.
 - `crates/modules/{example_module}`: generated `{example}` example module.
-- `crates/modules/auth`: server-rendered auth pages for the framework auth module.
+- `crates/app/web/templates/auth`: login and register pages for the framework auth module. The app template root is searched before module templates, so edits here replace the framework pages.
 
 {local_dev_section}
 
@@ -1271,6 +1282,34 @@ mod tests {
         assert!(
             REACTIVE_JS.contains("Controller"),
             "embedded reactive.js must be the Stimulus controller source"
+        );
+    }
+
+    #[test]
+    fn auth_templates_land_in_the_app_template_root() {
+        // The app root has no namespace, so `auth/login.html.j2` resolves there
+        // before reaching mod-auth's own web root. A copy anywhere else is dead.
+        let app_dir = std::env::temp_dir().join(format!(
+            "rwfw-auth-templates-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        write_auth_templates(&app_dir).unwrap();
+
+        let auth_dir = app_dir.join("crates/app/web/templates/auth");
+        let login = fs::read_to_string(auth_dir.join("login.html.j2")).unwrap();
+        let register = fs::read_to_string(auth_dir.join("register.html.j2")).unwrap();
+        let stray_module_dir_exists = app_dir.join("crates/modules/auth").exists();
+        fs::remove_dir_all(&app_dir).unwrap();
+
+        assert_eq!(login, AUTH_LOGIN_TEMPLATE);
+        assert_eq!(register, AUTH_REGISTER_TEMPLATE);
+        assert!(
+            !stray_module_dir_exists,
+            "auth templates must not go to a crate-less crates/modules/auth"
         );
     }
 
