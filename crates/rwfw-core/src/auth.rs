@@ -851,7 +851,8 @@ fn parse_cookie<'a>(cookie_header: &'a str, name: &str) -> Option<&'a str> {
     })
 }
 
-#[cfg(test)]
+// Runs against in-memory SQLite.
+#[cfg(all(test, feature = "sqlite"))]
 mod find_user_by_id_tests {
     use super::*;
     use sea_orm::{ConnectionTrait, Database};

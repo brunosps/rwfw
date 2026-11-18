@@ -68,6 +68,24 @@ pub enum DatabaseKind {
     Sqlite,
 }
 
+impl DatabaseKind {
+    /// Feature of rwfw-core / mod-auth / rwfw-tauri that compiles this driver.
+    fn feature(self) -> &'static str {
+        match self {
+            Self::Postgres => "postgres",
+            Self::Sqlite => "sqlite",
+        }
+    }
+
+    /// sea-orm feature for this driver.
+    fn sea_orm_feature(self) -> &'static str {
+        match self {
+            Self::Postgres => "sqlx-postgres",
+            Self::Sqlite => "sqlx-sqlite",
+        }
+    }
+}
+
 pub fn run(
     name: &str,
     example: ExampleKind,
@@ -89,22 +107,13 @@ pub fn run(
     }
 
     let dependency_source = DependencySource::resolve(rwfw_path, rwfw_version, rwfw_git, rwfw_tag)?;
-    let context = AppTemplateContext {
-        app_name: app_name.clone(),
-        app_crate_ident: app_name.replace('-', "_"),
-        app_title: to_title(&app_name),
-        database_name: format!("{}_dev", app_name.replace('-', "_")),
-        docker_database_name: app_name.replace('-', "_"),
-        rwfw_core_dep: dependency_source.dependency("rwfw-core"),
-        rwfw_shared_dep: dependency_source.dependency("rwfw-shared"),
-        rwfw_macros_dep: dependency_source.dependency("rwfw-macros"),
-        mod_auth_dep: dependency_source.module_dependency("auth"),
-        rwfw_tauri_dep: dependency_source.dependency_with_features("rwfw-tauri", &["desktop"]),
+    let context = AppTemplateContext::new(
+        app_name.clone(),
         example,
         database,
         tauri,
         dependency_source,
-    };
+    );
 
     create_dirs(app_dir)?;
     create_example_dirs(app_dir, example)?;
@@ -341,6 +350,39 @@ struct AppTemplateContext {
     dependency_source: DependencySource,
 }
 
+impl AppTemplateContext {
+    fn new(
+        app_name: String,
+        example: ExampleKind,
+        database: DatabaseKind,
+        tauri: bool,
+        dependency_source: DependencySource,
+    ) -> Self {
+        Self {
+            app_name: app_name.clone(),
+            app_crate_ident: app_name.replace('-', "_"),
+            app_title: to_title(&app_name),
+            database_name: format!("{}_dev", app_name.replace('-', "_")),
+            docker_database_name: app_name.replace('-', "_"),
+            // Only the chosen database driver is compiled in: default features are
+            // off for every framework crate that carries a driver, otherwise Cargo
+            // feature unification would bring the other one back.
+            rwfw_core_dep: dependency_source
+                .dependency_without_defaults("crates/rwfw-core", &[database.feature()]),
+            rwfw_shared_dep: dependency_source.dependency("rwfw-shared"),
+            rwfw_macros_dep: dependency_source.dependency("rwfw-macros"),
+            mod_auth_dep: dependency_source
+                .dependency_without_defaults("crates/modules/auth", &[database.feature(), "oidc"]),
+            rwfw_tauri_dep: dependency_source
+                .dependency_without_defaults("crates/rwfw-tauri", &["desktop", database.feature()]),
+            example,
+            database,
+            tauri,
+            dependency_source,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 enum DependencySource {
     Path(PathBuf),
@@ -430,40 +472,20 @@ impl DependencySource {
         }
     }
 
-    fn module_dependency(&self, module_name: &str) -> String {
-        match self {
-            Self::Path(root) => {
-                let path = root.join("crates").join("modules").join(module_name);
-                format!("{{ path = \"{}\" }}", path_for_toml(&path))
-            }
-            Self::Version(version) => format!("\"{version}\""),
-            Self::Git { repository, tag } => git_dependency(repository, tag),
-        }
-    }
-
-    /// Like [`dependency`] but with explicit cargo features (e.g. `desktop` for
-    /// `rwfw-tauri`). Always emits an inline-table form.
-    fn dependency_with_features(&self, crate_name: &str, features: &[&str]) -> String {
+    /// Dependency on the framework crate at `crate_dir` (relative to the rwfw
+    /// repo root) with default features off and exactly `features` on.
+    fn dependency_without_defaults(&self, crate_dir: &str, features: &[&str]) -> String {
         let feats = features
             .iter()
             .map(|f| format!("\"{f}\""))
             .collect::<Vec<_>>()
             .join(", ");
-        match self {
-            Self::Path(root) => {
-                let path = root.join("crates").join(crate_name);
-                format!(
-                    "{{ path = \"{}\", features = [{feats}] }}",
-                    path_for_toml(&path)
-                )
-            }
-            Self::Version(version) => {
-                format!("{{ version = \"{version}\", features = [{feats}] }}")
-            }
-            Self::Git { repository, tag } => {
-                format!("{{ git = \"{repository}\", tag = \"{tag}\", features = [{feats}] }}")
-            }
-        }
+        let source = match self {
+            Self::Path(root) => format!("path = \"{}\"", path_for_toml(&root.join(crate_dir))),
+            Self::Version(version) => format!("version = \"{version}\""),
+            Self::Git { repository, tag } => format!("git = \"{repository}\", tag = \"{tag}\""),
+        };
+        format!("{{ {source}, default-features = false, features = [{feats}] }}")
     }
 }
 
@@ -965,7 +987,7 @@ tower-http = { version = "0.6", features = ["fs", "trace", "cors"] }
 tower-sessions = "0.14"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-sea-orm = { version = "1", features = ["sqlx-postgres", "sqlx-sqlite", "runtime-tokio-rustls", "macros"] }
+sea-orm = { version = "1", features = ["__SEA_ORM_DRIVER__", "runtime-tokio-rustls", "macros"] }
 async-trait = "0.1"
 inventory = "0.3"
 tracing = "0.1"
@@ -978,6 +1000,7 @@ chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1", features = ["v4", "serde"] }
 "#
     .replace("__EXAMPLE_MODULE__", context.example.module_name())
+    .replace("__SEA_ORM_DRIVER__", context.database.sea_orm_feature())
     .replace("__TAURI_MEMBER__", tauri_member)
 }
 
@@ -1364,21 +1387,49 @@ mod tests {
     }
 
     fn test_context() -> AppTemplateContext {
-        AppTemplateContext {
-            app_name: "demo-app".to_string(),
-            app_crate_ident: "demo_app".to_string(),
-            app_title: "Demo App".to_string(),
-            database_name: "demo_app_dev".to_string(),
-            docker_database_name: "demo_app".to_string(),
-            rwfw_core_dep: String::new(),
-            rwfw_shared_dep: String::new(),
-            rwfw_macros_dep: String::new(),
-            mod_auth_dep: String::new(),
-            rwfw_tauri_dep: String::new(),
-            example: ExampleKind::Blog,
-            database: DatabaseKind::Sqlite,
-            tauri: false,
-            dependency_source: DependencySource::Version("0.0.0".to_string()),
+        context_for(DatabaseKind::Sqlite)
+    }
+
+    fn context_for(database: DatabaseKind) -> AppTemplateContext {
+        AppTemplateContext::new(
+            "demo-app".to_string(),
+            ExampleKind::Blog,
+            database,
+            false,
+            DependencySource::Git {
+                repository: "https://github.com/brunosps/rwfw".to_string(),
+                tag: "v0.0.0".to_string(),
+            },
+        )
+    }
+
+    #[test]
+    fn generated_app_compiles_only_the_chosen_database_driver() {
+        for (database, wanted, unwanted) in [
+            (DatabaseKind::Postgres, "postgres", "sqlite"),
+            (DatabaseKind::Sqlite, "sqlite", "postgres"),
+        ] {
+            let context = context_for(database);
+            // Every framework crate that carries a driver must turn default
+            // features off, or Cargo feature unification re-enables both.
+            for dep in [
+                &context.rwfw_core_dep,
+                &context.mod_auth_dep,
+                &context.rwfw_tauri_dep,
+            ] {
+                assert!(dep.contains("default-features = false"), "{dep}");
+                assert!(dep.contains(&format!("\"{wanted}\"")), "{dep}");
+                assert!(!dep.contains(&format!("\"{unwanted}\"")), "{dep}");
+            }
+            assert!(context.mod_auth_dep.contains("\"oidc\""));
+
+            let workspace = workspace_cargo_toml(&context);
+            let sea_orm = workspace
+                .lines()
+                .find(|line| line.starts_with("sea-orm ="))
+                .unwrap();
+            assert!(sea_orm.contains(&format!("sqlx-{wanted}")), "{sea_orm}");
+            assert!(!sea_orm.contains(&format!("sqlx-{unwanted}")), "{sea_orm}");
         }
     }
 
