@@ -13,6 +13,9 @@ security:
   headers_enabled: true
   hsts: true
   frame_options: "SAMEORIGIN"
+  referrer_policy: "strict-origin-when-cross-origin"
+  # base.html.j2 loads every script from a file: no 'unsafe-inline' for scripts.
+  content_security_policy: "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; object-src 'none'; base-uri 'self'; frame-ancestors 'self'"
   rate_limit:
     enabled: false
     max_requests: 10

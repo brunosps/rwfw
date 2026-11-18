@@ -1,5 +1,5 @@
-import * as Turbo from "@hotwired/turbo"
-import { Controller } from "@hotwired/stimulus"
+import * as Turbo from "/vendor/turbo.min.js"
+import { Controller } from "/vendor/stimulus.min.js"
 
 export default class extends Controller {
   connect() {

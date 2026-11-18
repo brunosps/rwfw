@@ -1,7 +1,8 @@
 //! Browser end-to-end test (npm-free) — drives a real headless Chromium via
 //! `chromiumoxide` (no Node/Playwright) to validate the JS behaviour the
-//! HTTP-level tests can't: that the vendored Turbo/Stimulus load via the import
-//! map, and that Turbo Drive navigates without a full page reload.
+//! HTTP-level tests can't: that the vendored Turbo/Stimulus boot from external
+//! module files under a CSP without `'unsafe-inline'`, and that Turbo Drive
+//! navigates without a full page reload.
 //!
 //! Gated behind `RWFW_E2E=1` (and a usable Chromium); skips cleanly otherwise so
 //! a plain `cargo test` stays green without a browser.
@@ -13,6 +14,54 @@ use std::time::Duration;
 use chromiumoxide::{Browser, BrowserConfig};
 use common::TestApp;
 use futures::StreamExt;
+use rwfw_core::config::{AppConfig, STRICT_CONTENT_SECURITY_POLICY};
+
+/// Launch headless Chromium with a profile directory of its own. chromiumoxide
+/// defaults every browser to the same `/tmp/chromiumoxide-runner` profile, so
+/// tests running in parallel hit Chromium's profile lock. With `RWFW_E2E=1` a
+/// launch failure fails the test instead of skipping it, so a broken browser
+/// setup cannot pass as green. Keep the returned guard alive for the test.
+async fn launch_browser() -> (Browser, chromiumoxide::Handler, ProfileDir) {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static SEQ: AtomicU64 = AtomicU64::new(0);
+    let profile = ProfileDir(std::env::temp_dir().join(format!(
+        "rwfw-e2e-chromium-{}-{}",
+        std::process::id(),
+        SEQ.fetch_add(1, Ordering::Relaxed)
+    )));
+
+    let config = BrowserConfig::builder()
+        .no_sandbox()
+        .arg("--disable-dev-shm-usage")
+        .user_data_dir(&profile.0)
+        .build()
+        .expect("browser config");
+
+    match Browser::launch(config).await {
+        Ok((browser, handler)) => (browser, handler, profile),
+        Err(error) => panic!("RWFW_E2E=1 but Chromium did not launch: {error}"),
+    }
+}
+
+/// Removes the per-test Chromium profile when the test ends.
+struct ProfileDir(std::path::PathBuf);
+
+impl Drop for ProfileDir {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+/// Browser tests run under the strict CSP the generated config ships: if the
+/// layout ever needs an inline script again, Turbo/Stimulus stop booting here.
+fn strict_csp(config: AppConfig) -> AppConfig {
+    config
+        .with_override(
+            "security.content_security_policy",
+            STRICT_CONTENT_SECURITY_POLICY,
+        )
+        .expect("override CSP")
+}
 
 #[tokio::test]
 async fn turbo_drive_navigates_without_full_reload() {
@@ -20,24 +69,12 @@ async fn turbo_drive_navigates_without_full_reload() {
         eprintln!("skipping e2e: set RWFW_E2E=1 (and have Chromium) to run browser tests");
         return;
     }
-    let Some(app) = TestApp::spawn().await else {
+    let Some(app) = TestApp::spawn_with(strict_csp).await else {
         eprintln!("skipping e2e: RWFW_TEST_DATABASE_URL not set");
         return;
     };
 
-    let config = BrowserConfig::builder()
-        .no_sandbox()
-        .arg("--disable-dev-shm-usage")
-        .build()
-        .expect("browser config");
-
-    let (mut browser, mut handler) = match Browser::launch(config).await {
-        Ok(pair) => pair,
-        Err(error) => {
-            eprintln!("skipping e2e: could not launch Chromium: {error}");
-            return;
-        }
-    };
+    let (mut browser, mut handler, _profile) = launch_browser().await;
     let handler_task = tokio::spawn(async move { while handler.next().await.is_some() {} });
 
     let page = browser.new_page("about:blank").await.expect("new page");
@@ -57,7 +94,7 @@ async fn turbo_drive_navigates_without_full_reload() {
         .expect("eval stimulus")
         .into_value()
         .expect("stimulus bool");
-    assert!(turbo_loaded, "Turbo did not load from the import map");
+    assert!(turbo_loaded, "Turbo did not load (blocked by CSP?)");
     assert!(stimulus_loaded, "Stimulus did not start");
 
     // Tag the JS context; a Turbo Drive visit swaps <body> but preserves window.
@@ -119,24 +156,12 @@ async fn reactive_counter_updates_without_reload_and_rejects_tampering() {
         eprintln!("skipping e2e: set RWFW_E2E=1 (and have Chromium) to run browser tests");
         return;
     }
-    let Some(app) = TestApp::spawn().await else {
+    let Some(app) = TestApp::spawn_with(strict_csp).await else {
         eprintln!("skipping e2e: RWFW_TEST_DATABASE_URL not set");
         return;
     };
 
-    let config = BrowserConfig::builder()
-        .no_sandbox()
-        .arg("--disable-dev-shm-usage")
-        .build()
-        .expect("browser config");
-
-    let (mut browser, mut handler) = match Browser::launch(config).await {
-        Ok(pair) => pair,
-        Err(error) => {
-            eprintln!("skipping e2e: could not launch Chromium: {error}");
-            return;
-        }
-    };
+    let (mut browser, mut handler, _profile) = launch_browser().await;
     let handler_task = tokio::spawn(async move { while handler.next().await.is_some() {} });
 
     let page = browser.new_page("about:blank").await.expect("new page");
